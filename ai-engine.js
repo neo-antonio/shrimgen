@@ -14,13 +14,39 @@ import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transfo
 env.allowLocalModels = false;
 env.useBrowserCache  = true;
 
-// Small (1.5B param), instruction-tuned, ONNX-converted for Transformers.js.
-// Quantized to 4-bit (dtype "q4") to keep the download + memory footprint small
-// while still writing coherent, on-brief marketing copy.
-const MODEL_ID = "onnx-community/Qwen2.5-1.5B-Instruct";
+// Available models
+const MODELS = {
+  "1.5B": {
+    id:    "onnx-community/Qwen2.5-1.5B-Instruct",
+    label: "ShrimGen (1.5B)",
+    desc:  "Better quality, ~1 GB download"
+  },
+  "0.5B": {
+    id:    "onnx-community/Qwen2.5-0.5B-Instruct",
+    label: "ShrimGen Lite (0.5B)",
+    desc:  "Faster & lighter, ~400 MB download"
+  }
+};
+
+// Active model — changeable at runtime before first generation
+let activeModelKey = "1.5B";
+const MODEL_ID = MODELS[activeModelKey].id; // kept for backward compat reads
 
 let pipelinePromise = null;
 let activeDevice     = null;
+
+function setModel(key) {
+  if (!MODELS[key]) return;
+  if (key !== activeModelKey) {
+    // Reset pipeline so it reloads with the new model
+    pipelinePromise = null;
+    activeDevice    = null;
+  }
+  activeModelKey = key;
+}
+function getModelKey()   { return activeModelKey; }
+function getModelInfo()  { return MODELS[activeModelKey]; }
+function getModelList()  { return MODELS; }
 
 function loadPipeline(onProgress) {
   if (pipelinePromise) return pipelinePromise;
@@ -32,24 +58,27 @@ function loadPipeline(onProgress) {
   };
 
   pipelinePromise = (async () => {
-    // device:"auto" picks the best backend (WebGPU if available, else WASM/CPU)
-    // — but without an explicit dtype it can default to full fp32 precision,
-    // which for a 1.5B-param model needs ~6GB just for weights and can blow
-    // past the browser's available/WASM memory. q8 (8-bit) works on both
-    // WebGPU and WASM/CPU and cuts that to roughly a quarter.
-    const p = await pipeline("text-generation", MODEL_ID, {
-      device: "auto", dtype: "q8", progress_callback
+    const modelId  = MODELS[activeModelKey].id;
+    const hasWebGPU = typeof navigator !== "undefined" && !!navigator.gpu;
+    if (hasWebGPU) {
+      try {
+        const p = await pipeline("text-generation", modelId, {
+          device: "webgpu", dtype: "q4", progress_callback
+        });
+        activeDevice = "webgpu";
+        return p;
+      } catch (err) {
+        console.warn("[AIEngine] WebGPU unavailable or failed, falling back to WASM/CPU:", err);
+      }
+    }
+    // q4 (4-bit) quantization is WebGPU-only — the WASM/CPU ONNX runtime backend
+    // doesn't support it, so the CPU fallback must use a different dtype (q8 = 8-bit).
+    const p = await pipeline("text-generation", modelId, {
+      device: "wasm", dtype: "q8", progress_callback
     });
-    activeDevice = (p && p.model && p.model.config && p.model.config.device) || "auto";
+    activeDevice = "wasm";
     return p;
-  })().catch((err) => {
-    // IMPORTANT: clear the cached promise on failure, otherwise every future
-    // call (e.g. clicking "Retry download") just re-awaits this same rejected
-    // promise forever instead of actually trying again.
-    pipelinePromise = null;
-    activeDevice = null;
-    throw err;
-  });
+  })();
 
   return pipelinePromise;
 }
@@ -90,4 +119,5 @@ function preload(onProgress) {
   return loadPipeline(onProgress);
 }
 
-window.AIEngine = { generateOne, getDevice, isReady, preload, MODEL_ID };
+window.AIEngine = { generateOne, getDevice, isReady, preload, MODEL_ID,
+                    setModel, getModelKey, getModelInfo, getModelList };
