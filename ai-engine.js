@@ -32,24 +32,14 @@ function loadPipeline(onProgress) {
   };
 
   pipelinePromise = (async () => {
-    const hasWebGPU = typeof navigator !== "undefined" && !!navigator.gpu;
-    if (hasWebGPU) {
-      try {
-        const p = await pipeline("text-generation", MODEL_ID, {
-          device: "webgpu", dtype: "q4", progress_callback
-        });
-        activeDevice = "webgpu";
-        return p;
-      } catch (err) {
-        console.warn("[AIEngine] WebGPU unavailable or failed, falling back to WASM/CPU:", err);
-      }
-    }
-    // q4 (4-bit) quantization is WebGPU-only — the WASM/CPU ONNX runtime backend
-    // doesn't support it, so the CPU fallback must use a different dtype (q8 = 8-bit).
+    // Let Transformers.js auto-detect the best available backend (WebGPU if a
+    // real GPU adapter exists, otherwise WASM/CPU) and pick a matching
+    // quantization for that backend itself, rather than us guessing a device +
+    // dtype combination that may be invalid for whatever backend it lands on.
     const p = await pipeline("text-generation", MODEL_ID, {
-      device: "wasm", dtype: "q8", progress_callback
+      device: "auto", progress_callback
     });
-    activeDevice = "wasm";
+    activeDevice = (p && p.model && p.model.config && p.model.config.device) || "auto";
     return p;
   })().catch((err) => {
     // IMPORTANT: clear the cached promise on failure, otherwise every future
