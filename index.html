@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShrimGen — Offline AI marketing copy generator</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-logo" src="favicon.png" alt="ShrimGen logo">
+    <div class="brand-text">
+      <h1>ShrimGen</h1>
+      <p>Offline AI marketing copy generator</p>
+    </div>
+  </div>
+  <nav class="tabs topbar-tabs" aria-label="Sections">
+    <button type="button" class="tab-btn active" data-tab="training">Training Set</button>
+    <button type="button" class="tab-btn" data-tab="generate">Brief &amp; Output</button>
+  </nav>
+</header>
+
+<main class="layout">
+
+  <!-- TAB 1: Training Data Manager -->
+  <div class="tab-panel tab-panel-training active-tab" id="tab-training">
+    <div class="training-grid">
+
+      <!-- LEFT: add/edit form -->
+      <section class="training-col training-col-form" aria-label="Add training example">
+        <div class="panel-head">
+          <h2>Training Set</h2>
+        </div>
+
+        <form id="trainingForm" class="train-form">
+          <fieldset class="match-by-fieldset">
+            <legend>Match by <span class="field-hint-inline">(fill exactly one — Product Type OR Event)</span></legend>
+            <label>Product Type
+              <input type="text" id="tProductType" placeholder="e.g. Laptop, Dog Food, Rose Bouquet">
+              <span class="field-hint">The general category this example belongs to.</span>
+            </label>
+            <label>Event <span class="optional-tag">optional path</span>
+              <input type="text" id="tEvent" placeholder="e.g. Father's Day, Christmas, Black Friday">
+              <span class="field-hint">Use instead of Product Type for occasion-based copy.</span>
+            </label>
+          </fieldset>
+
+          <label>Style
+            <select id="tStyle">
+              <option value="Generic">Generic (Default)</option>
+              <option>Emotional</option>
+              <option>Professional</option>
+              <option>Funny</option>
+              <option>Luxury</option>
+              <option>Urgent</option>
+              <option>Friendly</option>
+            </select>
+          </label>
+
+          <label>Audience <span class="optional-tag">optional</span>
+            <input type="text" id="tAudience" placeholder="e.g. Parents, Young Adults, Pet Owners">
+            <span class="field-hint">Who this copy targets. Helps match your brief to relevant examples.</span>
+          </label>
+
+          <label>Paste training text
+            <textarea id="tBulkText" rows="8" placeholder="Paste any amount of text the AI can learn from — past captions, product descriptions, reviews, social posts, anything. One line/sentence becomes one training example." required></textarea>
+            <span class="field-hint">Tip: paste in bulk. Every line or sentence is learned separately.</span>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="saveExampleBtn">Add</button>
+            <button type="button" class="btn btn-ghost" id="cancelEditBtn" hidden>Cancel edit</button>
+            <button type="button" class="btn btn-small btn-csv" id="importCsvBtn" title="Import from CSV">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="1" y="1" width="8" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M4 1v3h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <path d="M3 6.5h7M3 8.5h5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+              </svg>
+              CSV
+            </button>
+            <input type="file" id="importCsvFile" accept=".csv" hidden>
+          </div>
+        </form>
+
+        <div class="data-tools">
+          <button class="btn btn-small" id="exportBtn">Export JSON</button>
+          <button class="btn btn-small" id="importBtn">Import JSON</button>
+          <button class="btn btn-small btn-danger" id="clearBtn">Clear all</button>
+          <input type="file" id="importFile" accept="application/json" hidden>
+        </div>
+
+        <div class="keyword-cloud" id="keywordCloud" aria-label="Most common keywords"></div>
+      </section>
+
+      <!-- RIGHT: example list -->
+      <section class="training-col training-col-list" aria-label="Training examples">
+        <div class="example-list-head">
+          <h3>Examples</h3>
+          <div class="list-stats">
+            <span class="list-stat-pill" id="statExamples">0 examples</span>
+            <span class="list-stat-pill" id="statKeywords">0 keywords</span>
+          </div>
+          <input type="search" id="searchExamples" placeholder="filter...">
+        </div>
+        <ul class="example-list" id="exampleList"></ul>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- TAB 2: Brief + Output -->
+  <div class="tab-panel tab-panel-generate" id="tab-generate" hidden>
+
+  <!-- LEFT PANEL: Brief -->
+  <section class="panel panel-center" aria-label="Creative brief input">
+    <div class="panel-head">
+      <h2>Creative Brief</h2>
+    </div>
+
+    <form id="promptForm" class="prompt-form">
+
+      <div class="label-row">
+        <span class="label-text">Product Name <span class="optional-tag">optional</span></span>
+        <span class="tooltip-wrap" tabindex="-1">
+          <button type="button" class="tooltip-icon" aria-label="About Product Name">?</button>
+          <span class="tooltip-popup tooltip-popup--right" role="tooltip">The actual product or brand name.</span>
+        </span>
+        <input type="text" id="pProductName" placeholder="e.g. Macbook Neo">
+      </div>
+
+      <div class="label-row">
+        <span class="label-text">Product Type</span>
+        <span class="tooltip-wrap" tabindex="-1">
+          <button type="button" class="tooltip-icon" aria-label="About Product Type">?</button>
+          <span class="tooltip-popup tooltip-popup--right" role="tooltip">The general category of the product.</span>
+        </span>
+        <input type="text" id="pProductType" placeholder="e.g. Laptop" required>
+      </div>
+
+      <div class="label-row">
+        <span class="label-text">Event <span class="optional-tag">optional</span></span>
+        <span class="tooltip-wrap" tabindex="-1">
+          <button type="button" class="tooltip-icon" aria-label="About Event">?</button>
+          <span class="tooltip-popup tooltip-popup--right" role="tooltip">A seasonal occasion or campaign theme.</span>
+        </span>
+        <input type="text" id="pEvent" placeholder="e.g. Father's Day">
+      </div>
+
+      <div class="label-row">
+        <span class="label-text">Audience <span class="optional-tag">optional</span></span>
+        <span class="tooltip-wrap" tabindex="-1">
+          <button type="button" class="tooltip-icon" aria-label="About Audience">?</button>
+          <span class="tooltip-popup tooltip-popup--right" role="tooltip">Who you're speaking to, e.g. Parents, Pet Owners.</span>
+        </span>
+        <input type="text" id="pAudience" placeholder="e.g. Parents, Young Adults">
+      </div>
+
+      <fieldset class="mention-fieldset">
+        <legend>Make sure AI mentions</legend>
+        <div class="mention-grid">
+          <label class="mention-check"><input type="checkbox" id="mentionBrand" checked><span>Product brand</span></label>
+          <label class="mention-check"><input type="checkbox" id="mentionType" checked><span>Product type</span></label>
+          <label class="mention-check"><input type="checkbox" id="mentionAudience"><span>Audience</span></label>
+          <label class="mention-check"><input type="checkbox" id="mentionEvent"><span>Event</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="tone-fieldset">
+        <legend>Tone</legend>
+        <div class="tone-grid" id="toneGrid">
+          <label class="tone-chip"><input type="radio" name="tone" value="Generic" checked><span>Generic (Default)</span></label>
+          <label class="tone-chip"><input type="radio" name="tone" value="Emotional"><span>Emotional</span></label>
+          <label class="tone-chip"><input type="radio" name="tone" value="Professional"><span>Professional</span></label>
+          <label class="tone-chip"><input type="radio" name="tone" value="Funny"><span>Funny</span></label>
+          <label class="tone-chip"><input type="radio" name="tone" value="Luxury"><span>Luxury</span></label>
+          <label class="tone-chip"><input type="radio" name="tone" value="Urgent"><span>Urgent</span></label>
+          <label class="tone-chip"><input type="radio" name="tone" value="Friendly"><span>Friendly</span></label>
+        </div>
+      </fieldset>
+
+      <div class="trio-row">
+        <div class="trio-field">
+          <span class="label-text">Char limit
+            <span class="tooltip-wrap" tabindex="-1">
+              <button type="button" class="tooltip-icon" aria-label="About Character limit">?</button>
+              <span class="tooltip-popup tooltip-popup--right" role="tooltip">Max character count for the generated copy.</span>
+            </span>
+          </span>
+          <input type="number" id="charLimitInput" min="15" max="750" step="5" value="125">
+        </div>
+
+        <div class="trio-field">
+          <span class="label-text">Variations</span>
+          <input type="number" id="variationCount" min="1" max="6" value="3">
+        </div>
+
+        <div class="trio-field trio-field--slider">
+          <span class="label-text">Creativity
+            <span class="tooltip-wrap" tabindex="-1">
+              <button type="button" class="tooltip-icon" aria-label="About Creativity">?</button>
+              <span class="tooltip-popup tooltip-popup--right" role="tooltip">Higher creativity remixes the source text more.</span>
+            </span>
+          </span>
+          <div class="creativity-control">
+            <input type="range" id="creativitySlider" min="1" max="10" value="5">
+            <span class="slider-val" id="creativityVal">5</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-small trio-specs-btn" id="assetSpecsBtn">Asset specs ↗</button>
+      </div>
+
+      <div class="label-row">
+        <span class="label-text">AI Model</span>
+        <div class="model-readout">
+          ShrimGen v1.0
+          <span class="model-readout-note">local LLM — downloads once, then runs fully offline</span>
+          <div class="model-download-row">
+            <button type="button" class="btn btn-small model-download-btn" id="modelDownloadBtn">Download model</button>
+            <span class="model-download-status" id="modelDownloadStatus">Not downloaded yet</span>
+          </div>
+          <div class="model-download-track" id="modelDownloadTrack" hidden>
+            <div class="model-download-fill" id="modelDownloadFill"></div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-generate">Generate copy</button>
+    </form>
+  </section>
+
+  <!-- RIGHT PANEL: Output -->
+  <section class="panel panel-right" aria-label="Generated output">
+    <div class="panel-head">
+      <h2>Output</h2>
+    </div>
+
+    <div class="model-status" id="modelStatus" hidden></div>
+
+    <div class="confidence-scope" id="confidenceScope">
+      <svg viewBox="0 0 200 110" class="gauge" id="gaugeSvg">
+        <path d="M10,100 A90,90 0 0 1 190,100" class="gauge-track"/>
+        <path d="M10,100 A90,90 0 0 1 190,100" class="gauge-fill" id="gaugeFill"/>
+      </svg>
+      <div class="gauge-readout">
+        <span class="gauge-num" id="confidenceNum">--</span>
+        <span class="gauge-label">confidence</span>
+      </div>
+      <div class="feedback-tally" id="feedbackTally"></div>
+    </div>
+
+    <div class="match-info" id="matchInfo">
+      <p class="placeholder-text">No generation yet. Fill in the brief and click <em>Generate copy</em>.</p>
+    </div>
+
+    <div class="output-list" id="outputList"></div>
+    <p class="ai-disclaimer">ShrimGen is experimental AI and can make mistakes.</p>
+  </section>
+
+  </div>
+
+</main>
+
+<footer>
+  <p class="footer-github">Visit <a href="https://neushimo.com/eatshimo?utm_source=eatshimo" target="_blank">neushimo.com</a> for updates</p>
+  <p>©2026 Neo Antonio</p>
+  <p>All rights reserved.</p>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<!-- Asset Specs Modal -->
+<div class="modal-overlay" id="assetSpecsModal" hidden aria-modal="true" role="dialog" aria-labelledby="assetSpecsTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="assetSpecsTitle">Ad Asset Specs</h3>
+      <button type="button" class="modal-close" id="assetSpecsClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-intro">Click any row to apply its recommended character limit.</p>
+      <table class="specs-table">
+        <thead>
+          <tr><th>Asset</th><th>Hard Limit</th><th>Recommended</th></tr>
+        </thead>
+        <tbody>
+          <tr data-limit="125"><td>Meta Ad Primary Text</td><td>125,000 chars</td><td>125 chars <span class="specs-note">(before "see more…")</span></td></tr>
+          <tr data-limit="40"><td>Meta Ad Headline</td><td>40 chars</td><td>25–40 chars</td></tr>
+          <tr data-limit="30"><td>Meta Ad Description</td><td>30 chars</td><td>15–30 chars</td></tr>
+          <tr data-limit="30"><td>Google Search Headline</td><td>30 chars</td><td>20–30 chars</td></tr>
+          <tr data-limit="90"><td>Google Search Description</td><td>90 chars</td><td>70–90 chars</td></tr>
+          <tr data-limit="90"><td>Google Long Headline <span class="specs-note">(PMax/Display)</span></td><td>90 chars</td><td>60–90 chars</td></tr>
+          <tr data-limit="150"><td>Social Media Caption <span class="specs-note">(Ads)</span></td><td>Platform dependent</td><td>80–150 chars</td></tr>
+          <tr data-limit="300"><td>Social Media Caption <span class="specs-note">(Organic)</span></td><td>Platform dependent</td><td>150–300 chars</td></tr>
+          <tr data-limit="50"><td>Email Subject Line</td><td>No strict limit</td><td>30–50 chars</td></tr>
+          <tr data-limit="150"><td>Promotional Text</td><td>Varies</td><td>60–150 chars</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Download progress bar (bottom-right, shown while AI model downloads) -->
+<div class="download-bar" id="downloadBar" hidden aria-live="polite" aria-label="Downloading AI resources">
+  <div class="download-bar-row">
+    <svg class="download-bar-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 2v10m0 0l-3-3m3 3l3-3"/><path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17"/>
+    </svg>
+    <span class="download-bar-text" id="downloadBarText">Downloading resources</span>
+    <span class="download-bar-pct" id="downloadBarPct"></span>
+  </div>
+  <div class="download-bar-track">
+    <div class="download-bar-fill" id="downloadBarFill"></div>
+  </div>
+</div>
+
+<script type="module" src="ai-engine.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
