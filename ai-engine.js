@@ -32,12 +32,13 @@ function loadPipeline(onProgress) {
   };
 
   pipelinePromise = (async () => {
-    // Let Transformers.js auto-detect the best available backend (WebGPU if a
-    // real GPU adapter exists, otherwise WASM/CPU) and pick a matching
-    // quantization for that backend itself, rather than us guessing a device +
-    // dtype combination that may be invalid for whatever backend it lands on.
+    // device:"auto" picks the best backend (WebGPU if available, else WASM/CPU)
+    // — but without an explicit dtype it can default to full fp32 precision,
+    // which for a 1.5B-param model needs ~6GB just for weights and can blow
+    // past the browser's available/WASM memory. q8 (8-bit) works on both
+    // WebGPU and WASM/CPU and cuts that to roughly a quarter.
     const p = await pipeline("text-generation", MODEL_ID, {
-      device: "auto", progress_callback
+      device: "auto", dtype: "q8", progress_callback
     });
     activeDevice = (p && p.model && p.model.config && p.model.config.device) || "auto";
     return p;
