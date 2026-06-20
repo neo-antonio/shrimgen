@@ -51,7 +51,14 @@ function loadPipeline(onProgress) {
     });
     activeDevice = "wasm";
     return p;
-  })();
+  })().catch((err) => {
+    // IMPORTANT: clear the cached promise on failure, otherwise every future
+    // call (e.g. clicking "Retry download") just re-awaits this same rejected
+    // promise forever instead of actually trying again.
+    pipelinePromise = null;
+    activeDevice = null;
+    throw err;
+  });
 
   return pipelinePromise;
 }
