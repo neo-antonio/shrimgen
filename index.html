@@ -215,7 +215,22 @@
       <div class="label-row">
         <span class="label-text">AI Model</span>
         <div class="model-readout">
-          ShrimGen v1.0
+          <div class="model-selector-row">
+            <label class="model-radio-chip">
+              <input type="radio" name="modelChoice" value="1.5B" checked>
+              <span class="model-radio-label">
+                <strong>ShrimGen (1.5B)</strong>
+                <small>Better quality · ~1 GB</small>
+              </span>
+            </label>
+            <label class="model-radio-chip">
+              <input type="radio" name="modelChoice" value="0.5B">
+              <span class="model-radio-label">
+                <strong>ShrimGen Lite (0.5B)</strong>
+                <small>Faster &amp; lighter · ~400 MB</small>
+              </span>
+            </label>
+          </div>
           <span class="model-readout-note">local LLM — downloads once, then runs fully offline</span>
           <div class="model-download-row">
             <button type="button" class="btn btn-small model-download-btn" id="modelDownloadBtn">Download model</button>
