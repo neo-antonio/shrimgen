@@ -317,11 +317,20 @@
 
     /* ---------- prompt construction for the local LLM ---------- */
     function buildSystemPrompt(query) {
+      const charLimit = query.charLimit;
       return [
-        "You are a senior advertising copywriter who writes short, punchy marketing copy.",
-        `Write in a ${query.tone.toLowerCase()} tone.`,
-        `The reply must be ${query.charLimit} characters or fewer in total, counting every character including spaces and punctuation.`,
-        "Reply with ONLY the final ad copy itself — no quotation marks, no markdown, no labels like \"Option:\", no explanations, and no alternates."
+        "You are ShrimGen, an AI marketing copywriter. Your ONLY job is to write short advertising copy.",
+        `Tone: ${query.tone.toLowerCase()}.`,
+        `Hard character limit: ${charLimit} characters (including spaces and punctuation). NEVER exceed this.`,
+        "Output rules — violating any of these is a failure:",
+        "• Write ONLY the ad copy text itself. Nothing else.",
+        "• Do NOT write explanations, apologies, disclaimers, labels, or meta-commentary.",
+        "• Do NOT write phrases like 'Of course!', 'Here is your copy:', 'reply not applicable', or 'I cannot'.",
+        "• Do NOT ask for more information. Use what you have been given.",
+        "• Do NOT use quotation marks around your output.",
+        "• If you only know the product type, write copy about that product type — that is enough information.",
+        "Example of a CORRECT response for Product Type = Laptop: 'Power through your day. Lightweight design, all-day battery.'",
+        "Example of a WRONG response: 'Of course! Here is some copy: ...' or 'I need more information about the product.'"
       ].join(" ");
     }
 
@@ -353,9 +362,9 @@
     }
 
     function estimateMaxTokens(charLimit) {
-      // ~1 token ≈ 2.5–4 chars for English ad copy; pad generously since
-      // trimToLimit() enforces the hard character cap afterward anyway.
-      return Math.max(24, Math.min(220, Math.ceil(charLimit/2.4)));
+      // ~1 token ≈ 3–4 chars for short ad copy.
+      // Keep ceiling lower to speed up generation — trimToLimit enforces the hard cap anyway.
+      return Math.max(20, Math.min(160, Math.ceil(charLimit / 3)));
     }
 
     /* ---------- one generation pass through the local LLM ---------- */
@@ -816,7 +825,7 @@
           <div class="output-card-foot">
             <span class="output-card-tag">Writing…</span>
             <div class="output-card-actions">
-              <span class="model-badge">ShrimGen v1.0</span>
+              <span class="model-badge">ShrimGen</span>
               <button type="button" class="feedback-btn like-btn" title="Good output"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></button>
               <button type="button" class="feedback-btn dislike-btn" title="Poor output"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button>
               <button type="button" class="copy-btn">Copy</button>
@@ -843,8 +852,11 @@
       ref.tagEl.textContent = `${query.tone} · ${text.length} / ${query.charLimit} chars`;
 
       const device = window.AIEngine && window.AIEngine.getDevice ? window.AIEngine.getDevice() : null;
+      const modelLabel = window.AIEngine && window.AIEngine.getModelInfo
+        ? window.AIEngine.getModelInfo().label
+        : "ShrimGen";
       const badge = ref.footEl.querySelector(".model-badge");
-      if (badge && device) badge.textContent = `ShrimGen v1.0 · ${device==="webgpu"?"GPU":"CPU"}`;
+      if (badge) badge.textContent = device ? `${modelLabel} · ${device === "webgpu" ? "GPU" : "CPU"}` : modelLabel;
 
       typeWords(ref.pEl, text).then(()=>{ ref.footEl.classList.add("visible"); });
 
@@ -885,6 +897,7 @@
       const status = $("#modelDownloadStatus");
       const track  = $("#modelDownloadTrack");
       const fill   = $("#modelDownloadFill");
+      const radios = $$('input[name="modelChoice"]');
       if (!btn) return;
 
       function setReady() {
@@ -894,10 +907,25 @@
         status.classList.add("ready");
         track.hidden = true;
       }
+      function setNotDownloaded() {
+        btn.disabled = false;
+        btn.textContent = "Download model";
+        status.textContent = "Not downloaded yet";
+        status.classList.remove("ready");
+        track.hidden = true;
+        fill.style.width = "0%";
+      }
 
       if (window.AIEngine && window.AIEngine.isReady && window.AIEngine.isReady()) {
         setReady();
       }
+
+      // When model radio changes, reset download state so user can download the new model
+      radios.forEach(r => r.addEventListener("change", () => {
+        if (!window.AIEngine || !window.AIEngine.setModel) return;
+        window.AIEngine.setModel(r.value);
+        setNotDownloaded();
+      }));
 
       btn.addEventListener("click", () => {
         if (!window.AIEngine || !window.AIEngine.preload) {
