@@ -28,6 +28,7 @@ const MODELS = [
     subtitle: "Built-in Remixer",
     builtin: true,
     hfId: null,
+    dtypes: [],
     params: "—",
     sizeLabel: "0 MB (no download)",
     device: "Any device — phone, tablet, or PC",
@@ -37,11 +38,12 @@ const MODELS = [
   {
     id: "tinyshrim",
     label: "TinyShrim",
-    subtitle: "TinyStories 124M",
+    subtitle: "SmolLM2 135M",
     builtin: false,
-    hfId: "onnx-community/TinyStories-124M",
-    params: "124M",
-    sizeLabel: "~80 MB",
+    hfId: "HuggingFaceTB/SmolLM2-135M-Instruct",
+    dtypes: ["q4f16", "int8", "uint8", "fp16", "fp32"],
+    params: "135M",
+    sizeLabel: "~110 MB",
     device: "Phones & low-power devices",
     specs: "Runs on CPU (WASM) almost anywhere; very limited reasoning",
     description: "The smallest, fastest real model. Good for short, simple lines on low-end hardware."
@@ -49,9 +51,10 @@ const MODELS = [
   {
     id: "smolshrim",
     label: "SmolShrim",
-    subtitle: "SmolLM 360M Instruct",
+    subtitle: "SmolLM2 360M",
     builtin: false,
-    hfId: "onnx-community/SmolLM2-360M-Instruct",
+    hfId: "HuggingFaceTB/SmolLM2-360M-Instruct",
+    dtypes: ["q4f16", "int8", "uint8", "fp16", "fp32"],
     params: "360M",
     sizeLabel: "~230 MB",
     device: "Phones & tablets",
@@ -61,9 +64,10 @@ const MODELS = [
   {
     id: "shrimlite",
     label: "ShrimLite",
-    subtitle: "Qwen2.5 0.5B Instruct",
+    subtitle: "Qwen2.5 0.5B",
     builtin: false,
     hfId: "onnx-community/Qwen2.5-0.5B-Instruct",
+    dtypes: ["q4", "q4f16", "int8", "fp16", "fp32"],
     params: "0.5B",
     sizeLabel: "~350 MB",
     device: "Tablets & laptops",
@@ -73,9 +77,10 @@ const MODELS = [
   {
     id: "shrimgen",
     label: "ShrimGen",
-    subtitle: "TinyLlama 1.1B Chat",
+    subtitle: "TinyLlama 1.1B",
     builtin: false,
-    hfId: "onnx-community/TinyLlama-1.1B-Chat-v1.0",
+    hfId: "Xenova/TinyLlama-1.1B-Chat-v1.0",
+    dtypes: ["q4f16", "int8", "fp16", "q8", "fp32"],
     params: "1.1B",
     sizeLabel: "~700 MB",
     device: "Laptops & desktops",
@@ -85,9 +90,10 @@ const MODELS = [
   {
     id: "shrimpro",
     label: "ShrimPro",
-    subtitle: "Phi-3 Mini 3.8B Instruct",
+    subtitle: "Phi-3 Mini 3.8B",
     builtin: false,
-    hfId: "onnx-community/Phi-3-mini-4k-instruct",
+    hfId: "Xenova/Phi-3-mini-4k-instruct",
+    dtypes: ["q4f16", "int8", "fp16", "q8", "fp32"],
     params: "3.8B",
     sizeLabel: "~2.3 GB",
     device: "Desktop / laptop with a discrete or modern integrated GPU",
@@ -118,25 +124,39 @@ function loadPipeline(modelId, onProgress) {
     }
   };
 
+  // Not every quantization ("dtype") is published for every model — a dtype
+  // that works for one model can 404 or fail to compile for another. Walk
+  // through this model's known-good dtypes in order until one actually loads.
+  async function loadWithDtypeFallback(device) {
+    let lastErr;
+    for (const dtype of model.dtypes) {
+      try {
+        return await pipeline("text-generation", model.hfId, { device, dtype, progress_callback });
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[AIEngine] ${modelId}: dtype "${dtype}" failed on ${device}:`, err);
+      }
+    }
+    throw lastErr || new Error(`No working dtype found for ${modelId} on ${device}`);
+  }
+
   pipelinePromises[modelId] = (async () => {
     const hasWebGPU = typeof navigator !== "undefined" && !!navigator.gpu;
     if (hasWebGPU) {
       try {
-        const p = await pipeline("text-generation", model.hfId, {
-          device: "webgpu", dtype: "q4", progress_callback
-        });
+        const p = await loadWithDtypeFallback("webgpu");
         activeDevices[modelId] = "webgpu";
         return p;
       } catch (err) {
         console.warn(`[AIEngine] WebGPU unavailable/failed for ${modelId}, falling back to WASM/CPU:`, err);
       }
     }
-    const p = await pipeline("text-generation", model.hfId, {
-      device: "wasm", dtype: "q4", progress_callback
-    });
+    const p = await loadWithDtypeFallback("wasm");
     activeDevices[modelId] = "wasm";
     return p;
   })();
+
+  pipelinePromises[modelId].catch(() => { delete pipelinePromises[modelId]; });
 
   return pipelinePromises[modelId];
 }
