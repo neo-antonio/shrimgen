@@ -456,6 +456,9 @@
 
     let editingId = null;
 
+    const ICON_LIKE = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+    const ICON_DISLIKE = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/></svg>`;
+
     /* ---------- toast ---------- */
     function toast(msg) {
       const el=$("#toast"); el.textContent=msg; el.classList.add("show");
@@ -540,8 +543,8 @@
       const {likes,dislikes}=Store.getFeedbackTotals();
       if(!likes && !dislikes){ el.innerHTML=""; return; }
       el.innerHTML=`
-        <div class="feedback-tally-row"><span>👍</span><span>${likes} liked</span></div>
-        <div class="feedback-tally-row"><span>👎</span><span>${dislikes} disliked</span></div>
+        <div class="feedback-tally-row"><span class="tally-icon">${ICON_LIKE}</span><span>${likes} liked</span></div>
+        <div class="feedback-tally-row"><span class="tally-icon">${ICON_DISLIKE}</span><span>${dislikes} disliked</span></div>
       `;
     }
 
@@ -804,8 +807,8 @@
             <span class="output-card-tag">Writing…</span>
             <div class="output-card-actions">
               <span class="model-badge">…</span>
-              <button type="button" class="feedback-btn like-btn" title="Good output">👍</button>
-              <button type="button" class="feedback-btn dislike-btn" title="Poor output">👎</button>
+              <button type="button" class="feedback-btn like-btn" title="Good output">${ICON_LIKE}</button>
+              <button type="button" class="feedback-btn dislike-btn" title="Poor output">${ICON_DISLIKE}</button>
               <button type="button" class="copy-btn">Copy</button>
             </div>
           </div>`;
@@ -873,7 +876,7 @@
       selectEl.innerHTML = "";
       window.AIEngine.MODELS.forEach(m=>{
         const opt=document.createElement("option");
-        opt.value=m.id; opt.textContent=`${m.label} — ${m.subtitle}`;
+        opt.value=m.id; opt.textContent=`${m.label} (${m.subtitle})`;
         selectEl.appendChild(opt);
       });
       if (savedId && window.AIEngine.MODELS.some(m=>m.id===savedId)) selectEl.value=savedId;
@@ -885,6 +888,7 @@
       const m = window.AIEngine.getModel(sel.value);
       const downloaded = await window.AIEngine.isModelDownloaded(m.id);
       info.innerHTML = `
+        <div class="model-info-row"><span class="model-info-label">Family</span><span>${esc(m.subtitle)}</span></div>
         <div class="model-info-row"><span class="model-info-label">Parameters</span><span>${esc(m.params)}</span></div>
         <div class="model-info-row"><span class="model-info-label">Download size</span><span>${esc(m.sizeLabel)}</span></div>
         <div class="model-info-row"><span class="model-info-label">Recommended for</span><span>${esc(m.device)}</span></div>
@@ -894,7 +898,9 @@
           ${m.builtin ? "Always available — nothing to download." : (downloaded ? "Downloaded — ready to use offline." : "Not downloaded yet on this device.")}
         </div>
       `;
+      const dlCard = $("#modelDownloadCard");
       const dlBtn = $("#modelDownloadBtn"), unBtn = $("#modelUninstallBtn");
+      if (dlCard) dlCard.hidden = !!m.builtin;
       if (dlBtn) dlBtn.hidden = m.builtin || downloaded;
       if (unBtn) unBtn.hidden = m.builtin || !downloaded;
       return downloaded;
@@ -962,8 +968,8 @@
         const actions = document.createElement("div");
         actions.className = "chat-msg-actions";
         actions.innerHTML = `
-          <button type="button" class="feedback-btn like-btn" title="Good response">👍</button>
-          <button type="button" class="feedback-btn dislike-btn" title="Poor response">👎</button>
+          <button type="button" class="feedback-btn like-btn" title="Good response">${ICON_LIKE}</button>
+          <button type="button" class="feedback-btn dislike-btn" title="Poor response">${ICON_DISLIKE}</button>
           <button type="button" class="copy-btn">Copy</button>`;
         const likeBtn = actions.querySelector(".like-btn");
         const dislikeBtn = actions.querySelector(".dislike-btn");
