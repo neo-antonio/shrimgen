@@ -317,20 +317,15 @@
 
     /* ---------- prompt construction for the local LLM ---------- */
     function buildSystemPrompt(query) {
-      const charLimit = query.charLimit;
       return [
-        "You are ShrimGen, an AI marketing copywriter. Your ONLY job is to write short advertising copy.",
-        `Tone: ${query.tone.toLowerCase()}.`,
-        `Hard character limit: ${charLimit} characters (including spaces and punctuation). NEVER exceed this.`,
-        "Output rules — violating any of these is a failure:",
-        "• Write ONLY the ad copy text itself. Nothing else.",
-        "• Do NOT write explanations, apologies, disclaimers, labels, or meta-commentary.",
-        "• Do NOT write phrases like 'Of course!', 'Here is your copy:', 'reply not applicable', or 'I cannot'.",
-        "• Do NOT ask for more information. Use what you have been given.",
-        "• Do NOT use quotation marks around your output.",
-        "• If you only know the product type, write copy about that product type — that is enough information.",
-        "Example of a CORRECT response for Product Type = Laptop: 'Power through your day. Lightweight design, all-day battery.'",
-        "Example of a WRONG response: 'Of course! Here is some copy: ...' or 'I need more information about the product.'"
+        "You are a senior advertising copywriter who writes short, punchy marketing copy.",
+        `Write in a ${query.tone.toLowerCase()} tone.`,
+        `The reply must be ${query.charLimit} characters or fewer in total, counting every character including spaces and punctuation.`,
+        "Reply with ONLY the final ad copy itself — no quotation marks, no markdown, no labels like \"Option:\", no explanations, and no alternates.",
+        "Never use bold text, italics, headers, bullet points, asterisks, underscores, or any other text formatting — plain sentences only.",
+        query.useEmojis
+          ? "You may include one or two relevant emoji if they fit naturally."
+          : "Do not use any emoji or symbols of that kind."
       ].join(" ");
     }
 
@@ -362,12 +357,12 @@
     }
 
     function estimateMaxTokens(charLimit) {
-      // ~1 token ≈ 3–4 chars for short ad copy.
-      // Keep ceiling lower to speed up generation — trimToLimit enforces the hard cap anyway.
-      return Math.max(20, Math.min(160, Math.ceil(charLimit / 3)));
+      // ~1 token ≈ 2.5–4 chars for English ad copy; pad generously since
+      // trimToLimit() enforces the hard character cap afterward anyway.
+      return Math.max(24, Math.min(220, Math.ceil(charLimit/2.4)));
     }
 
-    /* ---------- one generation pass through the local LLM ---------- */
+    /* ---------- one generation pass through the selected model ---------- */
     async function generateOne(query, productLabel, fewShot, likedPhrases, dislikedPhrases, onProgress) {
       if (!window.AIEngine) throw new Error("AI engine not loaded");
 
@@ -376,13 +371,25 @@
       const temperature   = 0.35 + (query.creativity/10)*0.85; // creativity 1→~0.44, 10→~1.2
 
       let text = await window.AIEngine.generateOne({
+        modelId: query.modelId,
         systemPrompt, userPrompt,
+        remix: {
+          fewShotLines: fewShot,
+          productLabel,
+          audience: query.audience,
+          event: query.event,
+          tone: query.tone,
+          charLimit: query.charLimit,
+          useEmojis: query.useEmojis
+        },
         maxNewTokens: estimateMaxTokens(query.charLimit),
         temperature,
         onProgress
       });
 
       text = text.replace(/^["“'`]+|["”'`]+$/g,"").trim();
+      text = text.replace(/\*\*|__|##+\s?|^[-*]\s+/g,"");
+      if (!query.useEmojis) text = text.replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu,"").trim();
       text = cleanup(text);
       text = capitalSentences(text);
       text = ensureProductMention(text, (query.mentionBrand||query.mentionType) ? productLabel : "");
@@ -458,10 +465,11 @@
     /* ---------- tabs ---------- */
     function initTabs() {
       const btns=[...$$(".tab-btn")];
-      const panels={"training":$("#tab-training"),"generate":$("#tab-generate")};
+      const panels={"training":$("#tab-training"),"generate":$("#tab-generate"),"chat":$("#tab-chat")};
       function activate(tab) {
         btns.forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));
         Object.entries(panels).forEach(([k,p])=>{
+          if (!p) return;
           const on=k===tab;
           p.hidden=!on;
           p.classList.toggle("active-tab",on);
@@ -664,6 +672,8 @@
       $("#creativitySlider").addEventListener("input",e=>{ $("#creativityVal").textContent=e.target.value; });
       $("#promptForm").addEventListener("submit", async e=>{
         e.preventDefault();
+        const genBtn = $(".btn-generate");
+        if (genBtn.disabled) return; // model not downloaded — button is inert, no popup
         const raw=parseInt($("#charLimitInput").value,10)||125;
         const charLimit=Math.max(15,Math.min(750,Math.round(raw/5)*5));
         const query={
@@ -675,23 +685,21 @@
           charLimit,
           creativity:  parseInt($("#creativitySlider").value,10),
           count:       Math.max(1,Math.min(6,parseInt($("#variationCount").value,10)||3)),
+          modelId:     $("#modelSelect") ? $("#modelSelect").value : "shrim-builtin",
+          useEmojis:   $("#useEmojis") ? $("#useEmojis").checked : false,
           mentionBrand:    $("#mentionBrand")?.checked    ?? true,
           mentionType:     $("#mentionType")?.checked     ?? true,
           mentionAudience: $("#mentionAudience")?.checked ?? false,
           mentionEvent:    $("#mentionEvent")?.checked    ?? false
         };
 
-        if (!window.AIEngine) {
-          toast("AI engine failed to load — check your connection and reload the page.");
-          return;
-        }
+        if (!window.AIEngine) return; // engine script failed to load; button stays disabled, no popup
 
         const examples = Store.all();
         const info = Generator.matchInfo(query, examples);
         renderMatchInfo(query, info);
 
         const cards = prepareOutputCards(query.count);
-        const genBtn = $(".btn-generate");
         const originalLabel = genBtn.textContent;
         genBtn.disabled = true;
         genBtn.textContent = "Generating…";
@@ -708,6 +716,7 @@
           genBtn.disabled = false;
           genBtn.textContent = originalLabel;
           clearModelStatus();
+          refreshGenerateAvailability();
         }
       });
     }
@@ -715,30 +724,13 @@
     /* ---------- model load/download status ---------- */
     function updateModelStatus(p) {
       const el = $("#modelStatus");
-      const bar = $("#downloadBar");
-      const barText = $("#downloadBarText");
-      const barFill = $("#downloadBarFill");
-      const barPct  = $("#downloadBarPct");
       if (!p) return;
       if (p.status === "progress" && typeof p.progress === "number") {
         el.hidden = false;
         el.textContent = `Loading AI model — one-time download (cached after this)… ${Math.round(p.progress)}%`;
-        if (bar) {
-          bar.hidden = false;
-          if (barText) barText.textContent = "Downloading resources";
-          const pct = Math.round(p.progress);
-          if (barFill) barFill.style.width = pct + "%";
-          if (barPct)  barPct.textContent  = pct + "%";
-        }
       } else if (p.status === "initiate" || p.status === "download") {
         el.hidden = false;
         el.textContent = "Preparing AI model…";
-        if (bar) {
-          bar.hidden = false;
-          if (barText) barText.textContent = "Downloading resources";
-          if (barFill) barFill.style.width = "0%";
-          if (barPct)  barPct.textContent  = "";
-        }
       } else if (p.status === "ready" || p.status === "done") {
         clearModelStatus();
       }
@@ -746,20 +738,6 @@
     function clearModelStatus() {
       const el = $("#modelStatus");
       el.hidden = true; el.textContent = "";
-      const bar = $("#downloadBar");
-      if (bar) bar.hidden = true;
-      syncModelDownloadButton();
-    }
-    function syncModelDownloadButton() {
-      if (!(window.AIEngine && window.AIEngine.isReady && window.AIEngine.isReady())) return;
-      const btn = $("#modelDownloadBtn");
-      const status = $("#modelDownloadStatus");
-      const track = $("#modelDownloadTrack");
-      if (!btn || btn.disabled) return;
-      btn.disabled = true;
-      btn.textContent = "Downloaded";
-      if (status) { status.textContent = "Ready — running fully offline"; status.classList.add("ready"); }
-      if (track) track.hidden = true;
     }
 
     /* ---------- gauge ---------- */
@@ -825,9 +803,9 @@
           <div class="output-card-foot">
             <span class="output-card-tag">Writing…</span>
             <div class="output-card-actions">
-              <span class="model-badge">ShrimGen</span>
-              <button type="button" class="feedback-btn like-btn" title="Good output"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></button>
-              <button type="button" class="feedback-btn dislike-btn" title="Poor output"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button>
+              <span class="model-badge">…</span>
+              <button type="button" class="feedback-btn like-btn" title="Good output">👍</button>
+              <button type="button" class="feedback-btn dislike-btn" title="Poor output">👎</button>
               <button type="button" class="copy-btn">Copy</button>
             </div>
           </div>`;
@@ -851,12 +829,10 @@
       ref.pEl.classList.remove("thinking");
       ref.tagEl.textContent = `${query.tone} · ${text.length} / ${query.charLimit} chars`;
 
-      const device = window.AIEngine && window.AIEngine.getDevice ? window.AIEngine.getDevice() : null;
-      const modelLabel = window.AIEngine && window.AIEngine.getModelInfo
-        ? window.AIEngine.getModelInfo().label
-        : "ShrimGen";
+      const m = window.AIEngine ? window.AIEngine.getModel(query.modelId) : null;
+      const device = window.AIEngine && window.AIEngine.getDevice ? window.AIEngine.getDevice(query.modelId) : null;
       const badge = ref.footEl.querySelector(".model-badge");
-      if (badge) badge.textContent = device ? `${modelLabel} · ${device === "webgpu" ? "GPU" : "CPU"}` : modelLabel;
+      if (badge && m) badge.textContent = m.builtin ? m.label : `${m.label} · ${device==="webgpu"?"GPU":"CPU"}`;
 
       typeWords(ref.pEl, text).then(()=>{ ref.footEl.classList.add("visible"); });
 
@@ -891,80 +867,181 @@
       const d=document.createElement("div"); d.textContent=str; return d.innerHTML;
     }
 
-    /* ---------- inline model download control ---------- */
-    function bindModelDownload() {
-      const btn    = $("#modelDownloadBtn");
-      const status = $("#modelDownloadStatus");
-      const track  = $("#modelDownloadTrack");
-      const fill   = $("#modelDownloadFill");
-      const radios = $$('input[name="modelChoice"]');
-      if (!btn) return;
+    /* ---------- model management (Generate Mode) ---------- */
+    function populateModelSelect(selectEl, savedId) {
+      if (!selectEl || !window.AIEngine) return;
+      selectEl.innerHTML = "";
+      window.AIEngine.MODELS.forEach(m=>{
+        const opt=document.createElement("option");
+        opt.value=m.id; opt.textContent=`${m.label} — ${m.subtitle}`;
+        selectEl.appendChild(opt);
+      });
+      if (savedId && window.AIEngine.MODELS.some(m=>m.id===savedId)) selectEl.value=savedId;
+    }
 
-      function setReady() {
+    async function renderModelInfo() {
+      const sel = $("#modelSelect"); const info = $("#modelInfoCard");
+      if (!sel || !info || !window.AIEngine) return;
+      const m = window.AIEngine.getModel(sel.value);
+      const downloaded = await window.AIEngine.isModelDownloaded(m.id);
+      info.innerHTML = `
+        <div class="model-info-row"><span class="model-info-label">Parameters</span><span>${esc(m.params)}</span></div>
+        <div class="model-info-row"><span class="model-info-label">Download size</span><span>${esc(m.sizeLabel)}</span></div>
+        <div class="model-info-row"><span class="model-info-label">Recommended for</span><span>${esc(m.device)}</span></div>
+        <div class="model-info-row"><span class="model-info-label">Specs</span><span>${esc(m.specs)}</span></div>
+        <p class="model-info-desc">${esc(m.description)}</p>
+        <div class="model-info-status ${downloaded?'is-downloaded':'is-not-downloaded'}">
+          ${m.builtin ? "Always available — nothing to download." : (downloaded ? "Downloaded — ready to use offline." : "Not downloaded yet on this device.")}
+        </div>
+      `;
+      const dlBtn = $("#modelDownloadBtn"), unBtn = $("#modelUninstallBtn");
+      if (dlBtn) dlBtn.hidden = m.builtin || downloaded;
+      if (unBtn) unBtn.hidden = m.builtin || !downloaded;
+      return downloaded;
+    }
+
+    async function refreshGenerateAvailability() {
+      const sel = $("#modelSelect"), genBtn = $(".btn-generate"), note = $("#generateBlockedNote");
+      if (!sel || !genBtn) return;
+      const downloaded = await renderModelInfo();
+      const ready = downloaded || window.AIEngine.getModel(sel.value).builtin;
+      genBtn.disabled = !ready;
+      genBtn.classList.toggle("btn-disabled", !ready);
+      if (note) note.hidden = !!ready;
+    }
+
+    function bindModelControls() {
+      if (!window.AIEngine) return;
+      const sel = $("#modelSelect");
+      populateModelSelect(sel, localStorage.getItem("shrimgen_last_model"));
+      refreshGenerateAvailability();
+
+      sel.addEventListener("change", ()=>{
+        localStorage.setItem("shrimgen_last_model", sel.value);
+        refreshGenerateAvailability();
+      });
+
+      $("#modelDownloadBtn")?.addEventListener("click", async ()=>{
+        const m = window.AIEngine.getModel(sel.value);
+        const btn = $("#modelDownloadBtn");
         btn.disabled = true;
-        btn.textContent = "Downloaded";
-        status.textContent = "Ready — running fully offline";
-        status.classList.add("ready");
-        track.hidden = true;
-      }
-      function setNotDownloaded() {
-        btn.disabled = false;
-        btn.textContent = "Download model";
-        status.textContent = "Not downloaded yet";
-        status.classList.remove("ready");
-        track.hidden = true;
-        fill.style.width = "0%";
-      }
+        try {
+          await window.AIEngine.downloadModel(m.id, p=>updateModelStatus(p));
+          toast(`${m.label} downloaded — ready to use offline.`);
+        } catch (err) {
+          console.error("[ShrimGen] model download failed:", err);
+          toast("Download failed — see the browser console for details.");
+        } finally {
+          btn.disabled = false;
+          clearModelStatus();
+          await refreshGenerateAvailability();
+          populateModelSelect($("#chatModelSelect"), $("#chatModelSelect")?.value);
+        }
+      });
 
-      if (window.AIEngine && window.AIEngine.isReady && window.AIEngine.isReady()) {
-        setReady();
+      $("#modelUninstallBtn")?.addEventListener("click", async ()=>{
+        const m = window.AIEngine.getModel(sel.value);
+        if (!confirm(`Remove ${m.label} from this device? You'll need to download it again to use it.`)) return;
+        const ok = await window.AIEngine.uninstallModel(m.id);
+        toast(ok ? `${m.label} uninstalled.` : "Nothing to remove — model wasn't downloaded.");
+        await refreshGenerateAvailability();
+      });
+    }
+
+    /* ---------- Chat Mode ---------- */
+    function appendChatMessage(role, text) {
+      const list = $("#chatMessages");
+      if (!list) return null;
+      const row = document.createElement("div");
+      row.className = `chat-msg chat-msg-${role}`;
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      if (role === "assistant") {
+        const actions = document.createElement("div");
+        actions.className = "chat-msg-actions";
+        actions.innerHTML = `
+          <button type="button" class="feedback-btn like-btn" title="Good response">👍</button>
+          <button type="button" class="feedback-btn dislike-btn" title="Poor response">👎</button>
+          <button type="button" class="copy-btn">Copy</button>`;
+        const likeBtn = actions.querySelector(".like-btn");
+        const dislikeBtn = actions.querySelector(".dislike-btn");
+        actions.querySelector(".copy-btn").addEventListener("click", ()=>{ copyText(text); toast("Copied to clipboard."); });
+        likeBtn.addEventListener("click", ()=>{
+          Store.addFeedback(text, true, { source:"chat" });
+          likeBtn.classList.add("voted-like"); dislikeBtn.classList.remove("voted-dislike");
+          renderFeedbackTally();
+          toast("Marked as good — this style will carry over into Generate Mode.");
+        });
+        dislikeBtn.addEventListener("click", ()=>{
+          Store.addFeedback(text, false, { source:"chat" });
+          dislikeBtn.classList.add("voted-dislike"); likeBtn.classList.remove("voted-like");
+          renderFeedbackTally();
+          toast("Marked as poor — Generate Mode will steer away from this style.");
+        });
+        row.appendChild(actions);
       }
+      list.appendChild(row);
+      list.scrollTop = list.scrollHeight;
+      return row;
+    }
 
-      // When model radio changes, reset download state so user can download the new model
-      radios.forEach(r => r.addEventListener("change", () => {
-        if (!window.AIEngine || !window.AIEngine.setModel) return;
-        window.AIEngine.setModel(r.value);
-        setNotDownloaded();
-      }));
+    function bindChatMode() {
+      const form = $("#chatForm"), input = $("#chatInput"), sel = $("#chatModelSelect");
+      if (!form || !window.AIEngine) return;
+      populateModelSelect(sel, localStorage.getItem("shrimgen_last_chat_model") || localStorage.getItem("shrimgen_last_model"));
+      sel.addEventListener("change", ()=>localStorage.setItem("shrimgen_last_chat_model", sel.value));
 
-      btn.addEventListener("click", () => {
-        if (!window.AIEngine || !window.AIEngine.preload) {
-          toast("AI engine hasn't loaded yet — check your connection and try again in a moment.");
-          console.error("[ShrimGen] window.AIEngine is not available. The ai-engine.js module may have failed to load (check the browser console/network tab for a blocked or failed import from cdn.jsdelivr.net).");
+      form.addEventListener("submit", async e=>{
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+
+        const modelId = sel.value;
+        const downloaded = await window.AIEngine.isModelDownloaded(modelId);
+        const m = window.AIEngine.getModel(modelId);
+        if (!downloaded && !m.builtin) {
+          toast(`${m.label} isn't downloaded yet — pick it in Generate Mode and download it first.`);
           return;
         }
-        btn.disabled = true;
-        btn.textContent = "Downloading…";
-        status.textContent = "Starting download…";
-        status.classList.remove("ready");
-        track.hidden = false;
-        fill.style.width = "0%";
 
-        window.AIEngine.preload(p => {
-          if (!p) return;
-          if (p.status === "progress" && typeof p.progress === "number") {
-            const pct = Math.round(p.progress);
-            fill.style.width = pct + "%";
-            status.textContent = `Downloading… ${pct}%`;
-          } else if (p.status === "initiate" || p.status === "download") {
-            status.textContent = "Preparing AI model…";
-          }
-        }).then(() => {
-          setReady();
-        }).catch(err => {
-          console.error("[ShrimGen] model download failed:", err);
-          btn.disabled = false;
-          btn.textContent = "Retry download";
-          status.textContent = "Download failed — try again";
-          track.hidden = true;
-        });
+        appendChatMessage("user", text);
+        input.value = "";
+        const thinkingRow = appendChatMessage("assistant", "…");
+        if (thinkingRow) thinkingRow.querySelector(".chat-bubble").classList.add("thinking-bubble");
+
+        const sendBtn = $("#chatSendBtn");
+        sendBtn.disabled = true;
+        try {
+          // Chat Mode has no marketing-copy instructions — only this run's system
+          // prompt is dropped; the model itself still won't help with anything
+          // genuinely unsafe, that's a model-level behavior, not a prompt setting.
+          const reply = await window.AIEngine.generateOne({
+            modelId,
+            systemPrompt: "You are a helpful, friendly assistant.",
+            userPrompt: text,
+            remix: { fewShotLines: Store.all().map(d=>d.caption), productLabel:"", tone:"Generic", charLimit:600, useEmojis:true },
+            maxNewTokens: 200,
+            temperature: 0.8
+          });
+          thinkingRow.remove();
+          appendChatMessage("assistant", (reply || "").trim() || "(no response)");
+        } catch (err) {
+          console.error("[ShrimGen] chat generation failed:", err);
+          thinkingRow.remove();
+          toast("Chat response failed — see the browser console for details.");
+        } finally {
+          sendBtn.disabled = false;
+        }
       });
     }
 
     function init() {
       initTabs(); initTooltips(); initAssetSpecsModal();
       initCharLimit();
-      bindTrainingForm(); bindDataTools(); bindPromptForm(); bindModelDownload();
+      bindTrainingForm(); bindDataTools(); bindPromptForm();
+      bindModelControls(); bindChatMode();
       refreshTrainingUI(); renderFeedbackTally();
     }
     return { init };
