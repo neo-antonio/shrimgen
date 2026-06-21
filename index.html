@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ShrimGen — on-device AI chat</title>
+<meta name="description" content="ShrimGen runs small and large language models entirely on your device using WebGPU. No servers, no accounts, fully offline after install." />
+<meta name="theme-color" content="#ff6f61" />
+
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" href="icons/favicon.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===================== Header ===================== -->
+  <header id="app-header">
+    <button id="hamburger" class="icon-btn" aria-label="Toggle chat archives" aria-expanded="false">
+      <span class="bars"></span>
+    </button>
+
+    <div class="brand">
+      <img src="icons/favicon.png" alt="" class="brand-logo" width="28" height="28" />
+      <h1>ShrimGen</h1>
+    </div>
+
+    <button id="model-switcher-btn" class="model-pill" title="Switch AI model" disabled>
+      <span class="model-pill-dot"></span>
+      <span id="model-pill-label">Loading…</span>
+      <span class="chev">▾</span>
+    </button>
+  </header>
+
+  <!-- ===================== Layout ===================== -->
+  <div id="layout">
+
+    <div id="sidebar-overlay"></div>
+
+    <aside id="sidebar" aria-label="Chat archives">
+      <button id="new-chat-btn">
+        <span>＋</span> New chat
+      </button>
+      <div class="sidebar-label">Archives</div>
+      <div id="archive-list"></div>
+    </aside>
+
+    <main id="chat-main">
+
+      <div id="messages" aria-live="polite"></div>
+
+      <div id="empty-state" class="empty-state hidden">
+        <img src="icons/favicon.png" alt="" width="48" height="48" />
+        <h2>What's cooking?</h2>
+        <p>Ask ShrimGen anything. Everything runs locally on your device — nothing leaves your browser.</p>
+      </div>
+
+      <form id="composer" autocomplete="off">
+        <textarea id="input" placeholder="Message ShrimGen…" rows="1" maxlength="6000"></textarea>
+        <button id="send-btn" type="submit" aria-label="Send message">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 11.5 21 3l-8.5 18-2.5-7.5L3 11.5z" fill="currentColor"/></svg>
+        </button>
+      </form>
+      <div class="composer-hint">ShrimGen can make mistakes. Responses are generated locally on your device.</div>
+    </main>
+  </div>
+
+  <!-- ===================== Footer ===================== -->
+  <footer id="app-footer">
+    <p>Visit <a href="https://neushimo.com/shrimgen" target="_blank" rel="noopener"><strong>neushimo.com</strong></a> for updates</p>
+    <p>©2026 Neo Antonio<br />All rights reserved</p>
+    <p class="version">ShrimGen v1.0</p>
+  </footer>
+</div>
+
+<!-- ===================== Model picker / install modal ===================== -->
+<div id="model-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="model-modal-title">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="model-modal-title">Choose your Shrim</h2>
+      <button id="modal-close" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <p class="modal-sub" id="model-modal-sub">Pick a model to install. Larger Shrim, smarter replies — but a bigger download and more device muscle needed.</p>
+    <div id="model-grid"></div>
+  </div>
+</div>
+
+<!-- ===================== Install / download progress ===================== -->
+<div id="progress-overlay" class="hidden" role="status" aria-live="polite">
+  <div class="progress-card">
+    <img src="icons/favicon.png" alt="" width="40" height="40" class="progress-logo" />
+    <div id="progress-model-name">Installing…</div>
+    <div class="progress-track"><div id="progress-bar"></div></div>
+    <div id="progress-text">Preparing download…</div>
+  </div>
+</div>
+
+<!-- ===================== No WebGPU warning ===================== -->
+<div id="no-webgpu" class="modal hidden" role="alertdialog" aria-modal="true">
+  <div class="modal-card small">
+    <h2>WebGPU not available</h2>
+    <p>ShrimGen needs a browser with WebGPU support to run AI models on your device. Try the latest Chrome, Edge, or Safari, and make sure hardware acceleration is enabled.</p>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
