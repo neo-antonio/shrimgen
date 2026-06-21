@@ -75,33 +75,40 @@ button,input,select,textarea{ font-family:inherit; color:inherit; }
 
 /* ---------- layout ---------- */
 .layout{
-  display:block; background:var(--panel-2);
-  padding:24px; min-height:calc(100vh - 74px);
+  display:block; background:var(--bg);
+  height:calc(100vh - 74px); overflow:hidden;
 }
-.tab-panel{ display:none; }
+.tab-panel{ display:none; height:100%; }
 .tab-panel.active-tab{ display:block; }
 .tab-panel-generate.active-tab{
   display:grid; grid-template-columns:1fr 1fr;
-  gap:24px; background:transparent; align-items:start;
+  gap:1px; background:var(--line); height:100%; overflow-y:auto;
 }
-.panel{
-  background:var(--bg); padding:24px 26px 30px; max-width:760px; margin:0 auto;
-  border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
-}
-.tab-panel-generate .panel{ max-width:none; margin:0; padding:26px 30px 34px; }
+.panel{ background:var(--bg); padding:20px 22px 30px; max-width:760px; margin:0 auto; }
+.tab-panel-generate .panel{ max-width:none; margin:0; }
 .panel-head{ margin-bottom:16px; }
 
 /* ---------- training tab columns ---------- */
+.tab-panel-training{ height:100%; }
 .training-grid{
   display:grid; grid-template-columns:380px 1fr;
-  gap:24px; align-items:start;
+  gap:1px; background:var(--line); height:100%;
 }
 .training-col{
-  background:var(--bg); padding:26px 30px 32px;
-  border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
+  background:var(--bg); padding:20px 22px 30px;
+  overflow-y:auto; height:100%;
+}
+.training-col-list{
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.training-col-list .example-list-head{ flex-shrink:0; }
+.training-col-list .example-list{
+  flex:1 1 auto; overflow-y:auto; min-height:0; margin-bottom:0; padding-right:2px;
 }
 @media(max-width:1000px){
-  .training-grid{ grid-template-columns:1fr; }
+  .training-grid{ grid-template-columns:1fr; height:auto; }
+  .training-col{ height:auto; overflow-y:visible; }
+  .layout{ height:auto; overflow:visible; }
 }
 
 /* ---------- match-by fieldset ---------- */
@@ -345,55 +352,6 @@ input[type="range"]{ margin-top:8px; width:100%; accent-color:var(--amber); }
   text-transform:none; letter-spacing:normal;
 }
 
-/* ---------- model selector radio chips ---------- */
-.model-selector-row{
-  display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;
-}
-.model-radio-chip{
-  display:flex; align-items:flex-start; gap:0;
-  cursor:pointer; text-transform:none; letter-spacing:normal;
-  margin-bottom:0;
-}
-.model-radio-chip input[type="radio"]{ display:none; }
-.model-radio-label{
-  display:flex; flex-direction:column; gap:2px;
-  border:1.5px solid var(--line); border-radius:8px;
-  padding:8px 12px; font-size:12px; color:var(--muted);
-  cursor:pointer; transition:border-color .15s, background .15s, color .15s;
-  text-transform:none; letter-spacing:normal;
-}
-.model-radio-label strong{
-  font-size:12.5px; color:var(--text); font-weight:600;
-}
-.model-radio-label small{
-  font-family:var(--font-mono); font-size:10px; color:var(--muted);
-}
-.model-radio-chip input[type="radio"]:checked + .model-radio-label{
-  border-color:var(--amber); background:var(--amber-dim); color:var(--amber);
-}
-.model-radio-chip input[type="radio"]:checked + .model-radio-label strong{
-  color:var(--amber);
-}
-
-/* ---------- inline model download control (under model name) ---------- */
-.model-download-row{
-  display:flex; align-items:center; gap:10px; margin-top:10px;
-}
-.model-download-btn{ flex-shrink:0; }
-.model-download-btn[disabled]{ opacity:.6; cursor:default; }
-.model-download-status{
-  font-family:var(--font-mono); font-size:10.5px; color:var(--muted);
-  text-transform:none; letter-spacing:normal;
-}
-.model-download-status.ready{ color:var(--green); }
-.model-download-track{
-  margin-top:8px; height:4px; background:var(--panel-2); border-radius:4px; overflow:hidden;
-}
-.model-download-track[hidden]{ display:none; }
-.model-download-fill{
-  height:100%; width:0%; background:var(--amber); border-radius:4px; transition:width .3s ease;
-}
-
 /* ---------- model load/download status banner ---------- */
 .model-status{
   font-family:var(--font-mono); font-size:11.5px; color:var(--amber);
@@ -420,8 +378,11 @@ input[type="range"]{ margin-top:8px; width:100%; accent-color:var(--amber); }
 .gauge-num{ font-family:var(--font-mono); font-size:24px; color:var(--text); }
 .gauge-label{ font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
 
-/* feedback tally in gauge area — counts hidden */
-.feedback-tally{ display:none; }
+/* feedback tally in gauge area */
+.feedback-tally{
+  margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+  font-family:var(--font-mono); font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;
+}
 .feedback-tally-row{ display:flex; align-items:center; gap:5px; }
 
 /* ---------- match info ---------- */
@@ -458,9 +419,8 @@ input[type="range"]{ margin-top:8px; width:100%; accent-color:var(--amber); }
 }
 .output-card-foot button:hover{ color:var(--amber); border-color:var(--amber); }
 
-/* feedback buttons — SVG icon variant */
-.feedback-btn{ padding:5px 8px !important; line-height:0; }
-.feedback-btn svg{ display:block; }
+/* feedback buttons */
+.feedback-btn{ font-size:13px !important; padding:4px 8px !important; }
 .feedback-btn.voted-like{
   background:var(--green-dim) !important; border-color:var(--green) !important;
   color:var(--green) !important;
@@ -473,43 +433,6 @@ input[type="range"]{ margin-top:8px; width:100%; accent-color:var(--amber); }
   font-family:var(--font-mono); font-size:9px; text-transform:uppercase; letter-spacing:.06em;
   background:rgba(47,143,134,0.1); color:var(--teal); border:1px solid var(--teal);
   border-radius:20px; padding:2px 7px; white-space:nowrap;
-}
-
-/* ---------- AI disclaimer ---------- */
-.ai-disclaimer{
-  font-family:var(--font-mono); font-size:11px; color:#aaaaaa;
-  text-align:center; margin:18px 0 4px; letter-spacing:.02em; line-height:1.5;
-}
-
-/* ---------- download bar (bottom-right, model download progress) ---------- */
-.download-bar{
-  position:fixed; bottom:20px; right:20px; z-index:200;
-  background:var(--bg); border:1px solid var(--line);
-  border-radius:10px; box-shadow:var(--shadow);
-  padding:12px 16px; min-width:240px; max-width:300px;
-  display:flex; flex-direction:column; gap:8px;
-  transition:opacity .25s, transform .25s;
-}
-.download-bar[hidden]{ display:none; }
-.download-bar-row{
-  display:flex; align-items:center; gap:9px;
-}
-.download-bar-icon{ color:var(--amber); flex-shrink:0; animation:dlSpin 1.2s linear infinite; }
-@keyframes dlSpin{ to{ transform:rotate(360deg); } }
-.download-bar-text{
-  font-family:var(--font-mono); font-size:11px; color:var(--text);
-  text-transform:uppercase; letter-spacing:.05em; flex:1;
-}
-.download-bar-pct{
-  font-family:var(--font-mono); font-size:11px; color:var(--amber);
-  white-space:nowrap; min-width:32px; text-align:right;
-}
-.download-bar-track{
-  height:4px; background:var(--panel-2); border-radius:4px; overflow:hidden;
-}
-.download-bar-fill{
-  height:100%; background:var(--amber); border-radius:4px;
-  width:0%; transition:width .3s ease;
 }
 
 /* ---------- toast ---------- */
@@ -544,8 +467,8 @@ input[type="range"]{ margin-top:8px; width:100%; accent-color:var(--amber); }
 .specs-note{ font-size:11px; color:var(--muted); }
 
 /* ---------- scrollbars ---------- */
-.modal-box::-webkit-scrollbar{ width:8px; }
-.modal-box::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+.panel::-webkit-scrollbar,.modal-box::-webkit-scrollbar,.training-col::-webkit-scrollbar{ width:8px; }
+.panel::-webkit-scrollbar-thumb,.modal-box::-webkit-scrollbar-thumb,.training-col::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
 
 /* ---------- focus ---------- */
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
@@ -568,12 +491,87 @@ footer a:hover{ text-decoration:underline; }
   .tab-panel-generate.active-tab{ grid-template-columns:1fr; }
 }
 @media(max-width:680px){
-  .layout{ padding:14px; }
-  .panel,.training-col{ padding:20px 18px 24px; }
   .topbar{ flex-wrap:wrap; gap:8px; padding:10px 14px; }
   .topbar-tabs{ margin-left:0; width:100%; }
   .tab-btn{ padding:8px 12px; font-size:10px; flex:1; text-align:center; }
   .tone-grid{ grid-template-columns:repeat(2,1fr); }
   .example-list-head{ gap:6px; }
   .list-stats{ gap:4px; }
+}
+
+/* ---------- model selector & info card ---------- */
+.model-select{
+  display:block; width:100%; margin-top:6px; padding:9px 10px;
+  background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-family:var(--font-body); font-size:14px;
+  text-transform:none; letter-spacing:normal;
+}
+.model-info-card{
+  margin-top:10px; border:1px solid var(--line); border-radius:8px;
+  padding:11px 13px; background:var(--panel);
+  text-transform:none; letter-spacing:normal; font-family:var(--font-body);
+}
+.model-info-row{
+  display:flex; justify-content:space-between; gap:10px;
+  font-size:12.5px; color:var(--text); padding:3px 0;
+}
+.model-info-label{ color:var(--muted); font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; }
+.model-info-desc{ font-size:12.5px; color:var(--muted); line-height:1.5; margin:8px 0 0; }
+.model-info-status{
+  margin-top:9px; font-family:var(--font-mono); font-size:11px; text-transform:uppercase;
+  letter-spacing:.04em; padding:6px 9px; border-radius:6px;
+}
+.model-info-status.is-downloaded{ background:var(--green-dim); color:var(--green); }
+.model-info-status.is-not-downloaded{ background:var(--amber-dim); color:var(--amber); }
+.model-info-actions{ display:flex; gap:8px; margin-top:10px; }
+
+/* ---------- disabled generate button + blocked note ---------- */
+.btn-generate:disabled,.btn-generate.btn-disabled{
+  opacity:.5; cursor:not-allowed; background:var(--muted); border-color:var(--muted);
+}
+.generate-blocked-note{
+  font-size:12px; color:var(--amber); margin:-2px 0 8px; text-transform:none; letter-spacing:normal;
+}
+
+/* ---------- Chat Mode ---------- */
+.tab-panel-chat{ height:100%; }
+.tab-panel-chat.active-tab{ display:flex; height:100%; }
+.chat-shell{
+  display:flex; flex-direction:column; height:100%; width:100%;
+  max-width:820px; margin:0 auto; padding:18px 22px 16px;
+}
+.chat-head{ flex-shrink:0; margin-bottom:10px; }
+.chat-head h2{ font-size:17px; margin-bottom:8px; }
+.chat-head-note{ font-size:12px; color:var(--muted); margin:8px 0 0; line-height:1.5; }
+.chat-messages{
+  flex:1 1 auto; overflow-y:auto; min-height:0;
+  display:flex; flex-direction:column; gap:10px; padding:10px 2px;
+}
+.chat-msg{ display:flex; }
+.chat-msg-user{ justify-content:flex-end; }
+.chat-msg-assistant{ justify-content:flex-start; flex-direction:column; align-items:flex-start; gap:6px; }
+.chat-bubble{
+  max-width:80%; padding:10px 14px; border-radius:12px; font-size:14px; line-height:1.5;
+  white-space:pre-wrap;
+}
+.chat-msg-user .chat-bubble{ background:var(--amber); color:#fff; border-bottom-right-radius:3px; }
+.chat-msg-assistant .chat-bubble{ background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:3px; }
+.chat-bubble.thinking-bubble{ color:var(--muted); }
+.chat-msg-actions{ display:flex; gap:6px; }
+.chat-msg-actions button{
+  font-family:var(--font-mono); font-size:10px; text-transform:uppercase;
+  background:none; border:1px solid var(--line); border-radius:5px;
+  padding:4px 8px; color:var(--muted); cursor:pointer; transition:all .15s;
+}
+.chat-msg-actions button:hover{ color:var(--amber); border-color:var(--amber); }
+.chat-form{ flex-shrink:0; display:flex; gap:8px; margin-top:8px; }
+.chat-form input{
+  flex:1; padding:11px 14px; border:1px solid var(--line); border-radius:8px;
+  background:var(--panel); color:var(--text); font-size:14px; font-family:var(--font-body);
+}
+.chat-form input:focus{ outline:2px solid var(--amber); outline-offset:1px; border-color:var(--amber); }
+.chat-form button{ flex-shrink:0; }
+@media(max-width:680px){
+  .chat-shell{ padding:14px 14px 10px; }
+  .chat-bubble{ max-width:90%; }
 }
