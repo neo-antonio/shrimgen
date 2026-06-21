@@ -220,9 +220,12 @@
         <span class="label-text">AI Model</span>
         <select id="modelSelect" class="model-select"></select>
         <div class="model-info-card" id="modelInfoCard"></div>
-        <div class="model-info-actions">
-          <button type="button" class="btn btn-small" id="modelDownloadBtn" hidden>Download model</button>
-          <button type="button" class="btn btn-small btn-danger" id="modelUninstallBtn" hidden>Uninstall model</button>
+        <div class="model-download-card" id="modelDownloadCard">
+          <span class="model-download-card-label">Manage this model on this device</span>
+          <div class="model-info-actions">
+            <button type="button" class="btn btn-small" id="modelDownloadBtn" hidden>Download model</button>
+            <button type="button" class="btn btn-small btn-danger" id="modelUninstallBtn" hidden>Uninstall model</button>
+          </div>
         </div>
       </div>
 
@@ -267,13 +270,23 @@
 
   <!-- TAB 3: Chat Mode -->
   <div class="tab-panel tab-panel-chat" id="tab-chat" hidden>
-    <section class="chat-shell" aria-label="Chat with downloaded models">
-      <div class="chat-head">
+    <section class="panel chat-panel" aria-label="Chat with downloaded models">
+      <div class="panel-head">
         <h2>Chat Mode</h2>
-        <select id="chatModelSelect" class="model-select"></select>
+      </div>
+
+      <div class="card chat-head-card">
+        <div class="label-row">
+          <span class="label-text">Model</span>
+          <select id="chatModelSelect" class="model-select"></select>
+        </div>
         <p class="chat-head-note">Free-form chat with whichever model you've downloaded. No marketing-copy rules apply here — likes and dislikes still teach Generate Mode.</p>
       </div>
-      <div class="chat-messages" id="chatMessages"></div>
+
+      <div class="card chat-messages-card">
+        <div class="chat-messages" id="chatMessages"></div>
+      </div>
+
       <form id="chatForm" class="chat-form">
         <input type="text" id="chatInput" placeholder="Say anything…" autocomplete="off">
         <button type="submit" class="btn btn-primary" id="chatSendBtn">Send</button>
