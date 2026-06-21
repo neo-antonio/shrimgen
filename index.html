@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ShrimGen — Offline AI marketing copy generator</title>
+<title>ShrimGen</title>
 <link rel="icon" type="image/png" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,8 +21,9 @@
     </div>
   </div>
   <nav class="tabs topbar-tabs" aria-label="Sections">
-    <button type="button" class="tab-btn active" data-tab="training">Training Set</button>
-    <button type="button" class="tab-btn" data-tab="generate">Brief &amp; Output</button>
+    <button type="button" class="tab-btn active" data-tab="training">Train AI</button>
+    <button type="button" class="tab-btn" data-tab="generate">Generate Mode</button>
+    <button type="button" class="tab-btn" data-tab="chat">Chat Mode</button>
   </nav>
 </header>
 
@@ -214,34 +218,20 @@
 
       <div class="label-row">
         <span class="label-text">AI Model</span>
-        <div class="model-readout">
-          <div class="model-selector-row">
-            <label class="model-radio-chip">
-              <input type="radio" name="modelChoice" value="1.5B" checked>
-              <span class="model-radio-label">
-                <strong>ShrimGen (1.5B)</strong>
-                <small>Better quality · ~1 GB</small>
-              </span>
-            </label>
-            <label class="model-radio-chip">
-              <input type="radio" name="modelChoice" value="0.5B">
-              <span class="model-radio-label">
-                <strong>ShrimGen Lite (0.5B)</strong>
-                <small>Faster &amp; lighter · ~400 MB</small>
-              </span>
-            </label>
-          </div>
-          <span class="model-readout-note">local LLM — downloads once, then runs fully offline</span>
-          <div class="model-download-row">
-            <button type="button" class="btn btn-small model-download-btn" id="modelDownloadBtn">Download model</button>
-            <span class="model-download-status" id="modelDownloadStatus">Not downloaded yet</span>
-          </div>
-          <div class="model-download-track" id="modelDownloadTrack" hidden>
-            <div class="model-download-fill" id="modelDownloadFill"></div>
-          </div>
+        <select id="modelSelect" class="model-select"></select>
+        <div class="model-info-card" id="modelInfoCard"></div>
+        <div class="model-info-actions">
+          <button type="button" class="btn btn-small" id="modelDownloadBtn" hidden>Download model</button>
+          <button type="button" class="btn btn-small btn-danger" id="modelUninstallBtn" hidden>Uninstall model</button>
         </div>
       </div>
 
+      <div class="label-row">
+        <span class="label-text">Output style</span>
+        <label class="mention-check"><input type="checkbox" id="useEmojis"><span>Use emojis in output</span></label>
+      </div>
+
+      <p class="generate-blocked-note" id="generateBlockedNote" hidden>This model isn't downloaded yet — download it above before generating.</p>
       <button type="submit" class="btn btn-primary btn-generate">Generate copy</button>
     </form>
   </section>
@@ -271,15 +261,30 @@
     </div>
 
     <div class="output-list" id="outputList"></div>
-    <p class="ai-disclaimer">ShrimGen is experimental AI and can make mistakes.</p>
   </section>
 
+  </div>
+
+  <!-- TAB 3: Chat Mode -->
+  <div class="tab-panel tab-panel-chat" id="tab-chat" hidden>
+    <section class="chat-shell" aria-label="Chat with downloaded models">
+      <div class="chat-head">
+        <h2>Chat Mode</h2>
+        <select id="chatModelSelect" class="model-select"></select>
+        <p class="chat-head-note">Free-form chat with whichever model you've downloaded. No marketing-copy rules apply here — likes and dislikes still teach Generate Mode.</p>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <form id="chatForm" class="chat-form">
+        <input type="text" id="chatInput" placeholder="Say anything…" autocomplete="off">
+        <button type="submit" class="btn btn-primary" id="chatSendBtn">Send</button>
+      </form>
+    </section>
   </div>
 
 </main>
 
 <footer>
-  <p class="footer-github">Visit <a href="https://neushimo.com/eatshimo?utm_source=eatshimo" target="_blank">neushimo.com</a> for updates</p>
+  <p class="footer-github">Visit <a href="https://neushimo.com/shrimgen?utm_source=eatshimo" target="_blank">neushimo.com</a> for updates</p>
   <p>©2026 Neo Antonio</p>
   <p>All rights reserved.</p>
 </footer>
@@ -313,20 +318,6 @@
         </tbody>
       </table>
     </div>
-  </div>
-</div>
-
-<!-- Download progress bar (bottom-right, shown while AI model downloads) -->
-<div class="download-bar" id="downloadBar" hidden aria-live="polite" aria-label="Downloading AI resources">
-  <div class="download-bar-row">
-    <svg class="download-bar-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 2v10m0 0l-3-3m3 3l3-3"/><path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17"/>
-    </svg>
-    <span class="download-bar-text" id="downloadBarText">Downloading resources</span>
-    <span class="download-bar-pct" id="downloadBarPct"></span>
-  </div>
-  <div class="download-bar-track">
-    <div class="download-bar-fill" id="downloadBarFill"></div>
   </div>
 </div>
 
