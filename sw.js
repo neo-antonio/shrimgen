@@ -1,9 +1,9 @@
-// sw.js — ShrimGen service worker
+// sw.js - ShrimGen service worker
 // Caches the small app shell (HTML/CSS/JS/icons) as an OFFLINE FALLBACK only.
 // The primary strategy is network-first, so a fresh deploy is picked up on
 // the very next load instead of serving a stale cached copy. Model weights
 // are fetched from Hugging Face by the WebLLM library itself and cached via
-// the browser's own Cache/IndexedDB storage — we deliberately leave those
+// the browser's own Cache/IndexedDB storage; we deliberately leave those
 // cross-origin requests alone here.
 
 const CACHE_NAME = "shrimgen-shell-v0.3";
@@ -29,7 +29,7 @@ self.addEventListener("install", (event) => {
       .catch((err) => console.warn("ShrimGen SW: app shell cache failed", err))
   );
   // Activate this new worker as soon as it finishes installing, instead of
-  // waiting for all tabs to close — this is what makes updates show up fast.
+  // waiting for all tabs to close; this is what makes updates show up fast.
   self.skipWaiting();
 });
 

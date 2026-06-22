@@ -1,4 +1,4 @@
-// app.js — ShrimGen UI logic
+// app.js - ShrimGen UI logic
 import {
   aiEngine,
   MODELS,
@@ -10,7 +10,7 @@ import {
 } from "./ai-engine.js";
 
 // ---------------------------------------------------------------------------
-// Vector icons (single color via currentColor — no emoji anywhere)
+// Vector icons (single color via currentColor, no emoji anywhere)
 // ---------------------------------------------------------------------------
 const ICON_THUMB_UP =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.5-8a2 2 0 0 1 2 .3 2 2 0 0 1 .7 1.9L13.4 9H18a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 16.5 20H7"/></svg>';
@@ -141,7 +141,7 @@ const ACTIVE_MODEL_KEY = "shrimgen_active_model";
 const SYSTEM_PROMPT = {
   role: "system",
   content:
-    "You are ShrimGen, a friendly, concise, and helpful AI assistant running entirely on the user's device. Format replies with markdown (bold, italics, lists, code) when it helps clarity.",
+    "You are ShrimGen, a friendly, concise, and helpful AI assistant running entirely on the user's device. Format replies with markdown (bold, italics, lists, code) when it helps clarity. This is a brand-new, independent conversation: you have no memory of any other chat thread, and must never refer to or assume content from a previous conversation that hasn't appeared in this message history.",
 };
 
 function loadChats() {
@@ -312,7 +312,7 @@ function attachFeedback(row, msg) {
     try {
       await navigator.clipboard.writeText(msg.content || "");
     } catch {
-      // Clipboard API unavailable (e.g. insecure context) — fail silently.
+      // Clipboard API unavailable (e.g. insecure context), fail silently.
     }
     const original = copyBtn.innerHTML;
     copyBtn.innerHTML = ICON_CHECK;
@@ -376,7 +376,7 @@ function attachEditControls(row, msg, chat) {
 
   if (isEditable) {
     const editBtn = document.createElement("button");
-    editBtn.className = "edit-btn";
+    editBtn.className = "fb-btn edit-btn";
     editBtn.innerHTML = ICON_PENCIL;
     editBtn.title = "Edit message";
     editBtn.setAttribute("aria-label", "Edit message");
@@ -453,7 +453,7 @@ async function editUserMessage(chat, msg, newText) {
     msg.activeBranch = 0;
   }
 
-  // Drop the old reply (and anything after) — we're regenerating from here.
+  // Drop the old reply (and anything after); we're regenerating from here.
   chat.messages = chat.messages.slice(0, idx + 1);
   msg.content = newText;
   if (idx === 0) {
@@ -532,15 +532,13 @@ function scrollToBottom() {
 // ---------------------------------------------------------------------------
 function openModelModal(forced = false) {
   modalIsForced = forced;
-  modalClose.style.display = forced ? "none" : "";
   modelModalSub.textContent = forced
-    ? "Install an AI to get started. Pick whichever Shrim fits your device — you can add more, switch, or uninstall anytime."
-    : "Pick a model to install or switch to. Switching keeps your current conversation — the new Shrim picks up the full chat history. Installed models you're not using can be uninstalled to free up space.";
+    ? "Install an AI to get started. Pick whichever Shrim fits your device, you can add more, switch, or uninstall anytime."
+    : "Pick a model to install or switch to. Switching keeps your current conversation, and the new Shrim picks up the full chat history. Installed models you're not using can be uninstalled to free up space.";
   renderModelGrid();
   modelModal.classList.remove("hidden");
 }
 function closeModelModal() {
-  if (modalIsForced) return;
   modelModal.classList.add("hidden");
 }
 modalClose.addEventListener("click", closeModelModal);
@@ -642,8 +640,8 @@ function showProgress(modelName) {
       const totalSecs = Math.round((Date.now() - progressState.startedAt) / 1000);
       progressSubstatus.textContent =
         totalSecs > 60
-          ? "Still setting up — compiling the model for your device's GPU. This step can take a few minutes, especially on phones the first time. It'll be much faster next time."
-          : "Still working — setting up on your device's GPU. This can take a little while, especially on mobile.";
+          ? "Still setting up, compiling the model for your device's GPU. This step can take a few minutes, especially on phones the first time. It'll be much faster next time."
+          : "Still working, setting up on your device's GPU. This can take a little while, especially on mobile.";
     }
   }, 2000);
 }
@@ -677,10 +675,15 @@ function hideProgress(delay = 0) {
   }
 }
 
+function setSendAvailability() {
+  sendBtn.disabled = isGenerating || !aiEngine.activeKey;
+}
+
 function updateModelPill() {
   const model = MODELS[aiEngine.activeKey];
   modelPillLabel.textContent = model ? model.name : "Choose a model";
   modelPillBtn.disabled = false;
+  setSendAvailability();
 }
 
 async function chooseModel(modelKey) {
@@ -744,7 +747,7 @@ function setGeneratingUI(generating) {
   isGenerating = generating;
   sendBtn.classList.toggle("hidden", generating);
   stopBtn.classList.toggle("hidden", !generating);
-  sendBtn.disabled = generating;
+  setSendAvailability();
 }
 
 stopBtn.addEventListener("click", async () => {
@@ -761,7 +764,7 @@ async function generateAssistantReply(chat) {
   const assistantMsg = { role: "assistant", content: "", modelKey: aiEngine.activeKey, ts: Date.now() };
   const { row: aRow, bubble: aBubble } = buildMessageRow(assistantMsg, null);
   messagesEl.appendChild(aRow);
-  aBubble.innerHTML = renderMarkdown("", true);
+  aBubble.innerHTML = '<span class="dot-loading"><span></span><span></span><span></span></span>';
   scrollToBottom();
 
   setGeneratingUI(true);
@@ -776,7 +779,7 @@ async function generateAssistantReply(chat) {
       aBubble.innerHTML = renderMarkdown(fullText, true);
       scrollToBottom();
     });
-    assistantMsg.content = (full || "").trim() || "…";
+    assistantMsg.content = (full || "").trim() || "...";
     aBubble.innerHTML = renderMarkdown(assistantMsg.content);
     attachFeedback(aRow, assistantMsg);
     chat.messages.push(assistantMsg);
@@ -839,6 +842,7 @@ async function boot() {
 
   renderArchiveList();
   renderChat();
+  setSendAvailability();
 
   const savedModelKey = localStorage.getItem(ACTIVE_MODEL_KEY);
   const anyInstalled = Object.keys(MODELS).some((k) => isModelInstalled(k));

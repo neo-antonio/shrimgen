@@ -14,8 +14,8 @@ import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 export const MODELS = {
   shrimgen: {
     key: "shrimgen",
-    name: "ShrimGen",
-    tagline: "The default Shrim. Balanced and quick to install.",
+    name: "ShrimPhyr",
+    tagline: "A balanced, reliable Shrim that's quick to install.",
     description: "StableLM 2 Zephyr · 1.6B parameters",
     params: "1.6B",
     id: "stablelm-2-zephyr-1_6b-q4f16_1-MLC",
@@ -25,7 +25,6 @@ export const MODELS = {
     vram: "~1.8 GB VRAM",
     devices: ["Phone (high-end)", "Tablet", "Laptop", "PC"],
     specs: { ram: "4 GB+", gpu: "Any WebGPU GPU, 2 GB+ VRAM", cpu: "Any modern CPU" },
-    isDefault: true,
   },
   shrimqwen: {
     key: "shrimqwen",
@@ -71,8 +70,8 @@ export const MODELS = {
   },
   shrimllama: {
     key: "shrimllama",
-    name: "ShrimLlama",
-    tagline: "Sharper reasoning for everyday tasks.",
+    name: "ShrimGen",
+    tagline: "The default Shrim. Sharper reasoning for everyday tasks.",
     description: "Llama 3.2 · 3B parameters",
     params: "3B",
     id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
@@ -82,6 +81,7 @@ export const MODELS = {
     vram: "~2.9 GB VRAM",
     devices: ["Tablet (high-end)", "Laptop", "PC"],
     specs: { ram: "8 GB+", gpu: "3 GB+ VRAM, dedicated or unified", cpu: "Modern multi-core CPU" },
+    isDefault: true,
   },
   shrimphi: {
     key: "shrimphi",
@@ -127,7 +127,7 @@ export const MODELS = {
   },
 };
 
-export const DEFAULT_MODEL_KEY = "shrimgen";
+export const DEFAULT_MODEL_KEY = "shrimllama";
 
 const INSTALLED_KEY = "shrimgen_installed_models";
 
@@ -250,15 +250,16 @@ export function getLearningContext() {
   const disliked = readList(DISLIKED_KEY);
   if (!liked.length && !disliked.length) return "";
 
-  let out = "\n\nFeedback the user has given on past replies, to help you adapt:";
+  let out =
+    "\n\nStyle feedback from past sessions (not memory of any specific past conversation; do not reference these examples directly or claim to recall them):";
   if (liked.length) {
-    out += "\nReplies the user liked — match this style, tone, and length when relevant:";
+    out += "\nReplies the user liked: match this style, tone, and length when relevant.";
     liked.forEach((ex, i) => {
-      out += `\n${i + 1}. Q: "${ex.user}" — A liked: "${ex.assistant}"`;
+      out += `\n${i + 1}. Q: "${ex.user}", A liked: "${ex.assistant}"`;
     });
   }
   if (disliked.length) {
-    out += "\nThe user disliked past replies to questions like these — try a noticeably different approach:";
+    out += "\nThe user disliked past replies to questions like these. Try a noticeably different approach:";
     disliked.forEach((ex, i) => {
       out += `\n${i + 1}. "${ex.user}"`;
     });
