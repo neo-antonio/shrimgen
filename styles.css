@@ -656,10 +656,29 @@ textarea { font-family: inherit; }
   background: var(--coral);
   transition: width 0.25s ease;
 }
+#progress-bar.stalled {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--coral) 0 10px,
+    var(--coral-dark) 10px 20px
+  );
+  background-size: 28px 28px;
+  animation: progress-stripe 1s linear infinite;
+}
+@keyframes progress-stripe {
+  from { background-position: 0 0; }
+  to { background-position: 28px 0; }
+}
 #progress-text {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--slate);
+}
+#progress-substatus {
+  font-size: 0.78rem;
+  color: var(--slate);
+  max-width: 320px;
+  line-height: 1.4;
 }
 
 /* =====================================================================
@@ -693,4 +712,5 @@ textarea { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .bubble.typing::after { animation: none; }
   #sidebar { transition: none; }
+  #progress-bar.stalled { animation: none; }
 }

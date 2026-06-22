@@ -416,19 +416,64 @@ function renderModelGrid() {
 // ---------------------------------------------------------------------------
 // Progress overlay
 // ---------------------------------------------------------------------------
+const progressSubstatus = $("#progress-substatus");
+let progressState = { startedAt: 0, lastPct: -1, lastChangeAt: 0, stallTimer: null };
+
+function clearStallTimer() {
+  if (progressState.stallTimer) {
+    clearInterval(progressState.stallTimer);
+    progressState.stallTimer = null;
+  }
+}
+
 function showProgress(modelName) {
   progressModelName.textContent = "Installing " + modelName + "…";
   progressBar.style.width = "0%";
+  progressBar.classList.remove("stalled");
   progressText.textContent = "Preparing download…";
+  progressSubstatus.classList.add("hidden");
+  progressSubstatus.textContent = "";
   progressOverlay.classList.remove("hidden");
+
+  const now = Date.now();
+  progressState = { startedAt: now, lastPct: -1, lastChangeAt: now, stallTimer: null };
+  clearStallTimer();
+  progressState.stallTimer = setInterval(() => {
+    const stalledFor = Date.now() - progressState.lastChangeAt;
+    if (stalledFor > 12000) {
+      progressBar.classList.add("stalled");
+      progressSubstatus.classList.remove("hidden");
+      const totalSecs = Math.round((Date.now() - progressState.startedAt) / 1000);
+      progressSubstatus.textContent =
+        totalSecs > 60
+          ? "Still setting up — compiling the model for your device's GPU. This step can take a few minutes, especially on phones the first time. It'll be much faster next time."
+          : "Still working — setting up on your device's GPU. This can take a little while, especially on mobile.";
+    }
+  }, 2000);
 }
+
 function updateProgress(report) {
   let pct = 0;
   if (typeof report.progress === "number") pct = Math.round(report.progress * 100);
+
+  if (pct !== progressState.lastPct) {
+    progressState.lastPct = pct;
+    progressState.lastChangeAt = Date.now();
+    progressBar.classList.remove("stalled");
+    progressSubstatus.classList.add("hidden");
+  }
+
   progressBar.style.width = pct + "%";
-  progressText.textContent = report.text || pct + "% complete";
+
+  const text = report.text || "";
+  const isCompiling = pct >= 100 || /shader|gpu|kv.?cache|compil/i.test(text);
+  progressText.textContent = isCompiling
+    ? "Setting up on your device's GPU…"
+    : text || pct + "% downloaded";
 }
+
 function hideProgress(delay = 0) {
+  clearStallTimer();
   if (delay) {
     setTimeout(() => progressOverlay.classList.add("hidden"), delay);
   } else {
