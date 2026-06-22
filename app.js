@@ -467,7 +467,13 @@ async function chooseModel(modelKey) {
   } catch (err) {
     console.error(err);
     hideProgress();
-    alert("Couldn't load " + model.name + ". " + (err?.message || "Please try again."));
+    const msg = String(err?.message || err);
+    const isAdapterIssue = /no available adapters|unable to find a compatible gpu/i.test(msg);
+    alert(
+      isAdapterIssue
+        ? `Couldn't load ${model.name}: your browser couldn't reach the GPU right now. This usually clears up after fully closing and reopening your browser (a previous model may have left the GPU in a bad state). If it persists, check chrome://gpu to confirm WebGPU is hardware-accelerated.`
+        : `Couldn't load ${model.name}. ${msg || "Please try again."}`
+    );
   }
 }
 

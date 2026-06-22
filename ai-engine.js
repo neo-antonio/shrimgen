@@ -267,10 +267,32 @@ class AIEngine {
     this.activeKey = null;
     this.activeModelId = null;
     this.usedFallback = false;
+    this._cachedHasF16 = null;
   }
 
   supportsWebGPU() {
     return typeof navigator !== "undefined" && !!navigator.gpu;
+  }
+
+  /**
+   * Right after unload()-ing a previous engine, the old GPUDevice can take a
+   * moment to fully tear down. Requesting a new adapter immediately can
+   * transiently fail with "No available adapters" even though the GPU is
+   * fine. This retries a few times with a short backoff before giving up.
+   */
+  async _requestAdapterWithRetry(attempts = 4, delayMs = 350) {
+    let lastErr = null;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) return adapter;
+        lastErr = new Error("No available adapters.");
+      } catch (e) {
+        lastErr = e;
+      }
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+    throw lastErr || new Error("No available adapters.");
   }
 
   /**
@@ -279,15 +301,18 @@ class AIEngine {
    * don't expose it, which is exactly what throws the
    * "extension 'f16' is not allowed" / GPUPipelineError seen in the wild.
    * We check for it up front and prefer the f32 build when it's missing.
+   * Result is cached for the session so we don't hammer requestAdapter().
    */
   async hasShaderF16() {
     if (!this.supportsWebGPU()) return false;
+    if (this._cachedHasF16 !== null) return this._cachedHasF16;
     try {
-      const adapter = await navigator.gpu.requestAdapter();
-      return !!adapter && adapter.features.has("shader-f16");
+      const adapter = await this._requestAdapterWithRetry();
+      this._cachedHasF16 = adapter.features.has("shader-f16");
     } catch {
-      return false;
+      this._cachedHasF16 = false;
     }
+    return this._cachedHasF16;
   }
 
   /**
@@ -303,13 +328,15 @@ class AIEngine {
     };
 
     if (this.engine) {
-      // Free the previous model's GPU memory before loading a new one.
+      // Free the previous model's GPU memory before loading a new one,
+      // then give the GPU device a moment to actually finish tearing down.
       try {
         await this.engine.unload();
       } catch (e) {
         console.warn("Unload warning:", e);
       }
       this.engine = null;
+      await new Promise((r) => setTimeout(r, 300));
     }
 
     let idToUse = model.id;
@@ -325,16 +352,24 @@ class AIEngine {
       }
     }
 
+    const tryCreate = (id) => webllm.CreateMLCEngine(id, { initProgressCallback });
+
     try {
-      this.engine = await webllm.CreateMLCEngine(idToUse, { initProgressCallback });
+      this.engine = await tryCreate(idToUse);
     } catch (err) {
       const msg = String(err?.message || err);
       const looksLikeF16Issue = /shader-f16|f16|ShaderModule|GPUPipelineError/i.test(msg);
+      const looksLikeNoAdapter = /no available adapters|unable to find a compatible gpu/i.test(msg);
+
       if (!usedFallback && model.fallbackId && looksLikeF16Issue) {
         // Retry once with the more broadly compatible quantization.
         idToUse = model.fallbackId;
         usedFallback = true;
-        this.engine = await webllm.CreateMLCEngine(idToUse, { initProgressCallback });
+        this.engine = await tryCreate(idToUse);
+      } else if (looksLikeNoAdapter) {
+        // Likely a transient GPU-device-teardown race; wait and retry once.
+        await new Promise((r) => setTimeout(r, 800));
+        this.engine = await tryCreate(idToUse);
       } else {
         throw err;
       }
