@@ -19,6 +19,7 @@ export const MODELS = {
     description: "StableLM 2 Zephyr · 1.6B parameters",
     params: "1.6B",
     id: "stablelm-2-zephyr-1_6b-q4f16_1-MLC",
+    fallbackId: "stablelm-2-zephyr-1_6b-q4f32_1-MLC",
     downloadSize: "~1.0 GB",
     vram: "~1.8 GB VRAM",
     devices: ["Phone (high-end)", "Tablet", "Laptop", "PC"],
@@ -32,6 +33,7 @@ export const MODELS = {
     description: "Qwen2.5 · 0.5B parameters",
     params: "0.5B",
     id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+    fallbackId: "Qwen2.5-0.5B-Instruct-q4f32_1-MLC",
     downloadSize: "~0.4 GB",
     vram: "~0.9 GB VRAM",
     devices: ["Phone", "Tablet", "Laptop", "PC"],
@@ -44,6 +46,7 @@ export const MODELS = {
     description: "SmolLM2 · 360M parameters",
     params: "0.36B",
     id: "SmolLM2-360M-Instruct-q4f16_1-MLC",
+    fallbackId: "SmolLM2-360M-Instruct-q4f32_1-MLC",
     downloadSize: "~0.25 GB",
     vram: "~0.5 GB VRAM",
     devices: ["Phone", "Tablet", "Laptop", "PC"],
@@ -56,6 +59,7 @@ export const MODELS = {
     description: "TinyLlama · 1.1B parameters",
     params: "1.1B",
     id: "TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC",
+    fallbackId: "TinyLlama-1.1B-Chat-v1.0-q4f32_1-MLC",
     downloadSize: "~0.7 GB",
     vram: "~1.0 GB VRAM",
     devices: ["Phone", "Tablet", "Laptop", "PC"],
@@ -68,6 +72,7 @@ export const MODELS = {
     description: "Llama 3.2 · 3B parameters",
     params: "3B",
     id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+    fallbackId: "Llama-3.2-3B-Instruct-q4f32_1-MLC",
     downloadSize: "~1.9 GB",
     vram: "~2.9 GB VRAM",
     devices: ["Tablet (high-end)", "Laptop", "PC"],
@@ -80,6 +85,7 @@ export const MODELS = {
     description: "Phi-3.5 Mini · 3.8B parameters",
     params: "3.8B",
     id: "Phi-3.5-mini-instruct-q4f16_1-MLC",
+    fallbackId: "Phi-3.5-mini-instruct-q4f32_1-MLC",
     downloadSize: "~2.2 GB",
     vram: "~3.6 GB VRAM",
     devices: ["Laptop", "PC"],
@@ -92,6 +98,7 @@ export const MODELS = {
     description: "Mistral · 7B parameters",
     params: "7B",
     id: "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
+    fallbackId: "Mistral-7B-Instruct-v0.3-q4f32_1-MLC",
     downloadSize: "~4.0 GB",
     vram: "~5.5 GB VRAM",
     devices: ["Laptop (high-end)", "PC"],
@@ -104,6 +111,7 @@ export const MODELS = {
     description: "Gemma 2 · 9B parameters",
     params: "9B",
     id: "gemma-2-9b-it-q4f16_1-MLC",
+    fallbackId: "gemma-2-9b-it-q4f32_1-MLC",
     downloadSize: "~5.5 GB",
     vram: "~6.5 GB VRAM",
     devices: ["PC (high-end only)"],
@@ -143,6 +151,113 @@ export function forgetModel(key) {
   saveInstalledSet(set);
 }
 
+/**
+ * Uninstalls a model: stops tracking it as installed and, on a best-effort
+ * basis, clears its downloaded weights from the browser's Cache Storage so
+ * the space is actually freed. If the model being uninstalled is currently
+ * loaded in memory, it's unloaded first.
+ */
+export async function uninstallModel(modelKey) {
+  const model = MODELS[modelKey];
+  if (!model) return;
+
+  if (aiEngine.activeKey === modelKey && aiEngine.engine) {
+    try {
+      await aiEngine.engine.unload();
+    } catch (e) {
+      console.warn("Unload warning during uninstall:", e);
+    }
+    aiEngine.engine = null;
+    aiEngine.activeKey = null;
+    aiEngine.activeModelId = null;
+  }
+
+  forgetModel(modelKey);
+
+  if (typeof caches !== "undefined") {
+    try {
+      const ids = [model.id, model.fallbackId].filter(Boolean);
+      const cacheNames = await caches.keys();
+      for (const name of cacheNames) {
+        const cache = await caches.open(name);
+        const requests = await cache.keys();
+        for (const req of requests) {
+          if (ids.some((id) => req.url.includes(id))) {
+            await cache.delete(req);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Cache cleanup warning during uninstall:", e);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight feedback-driven adaptation
+// ---------------------------------------------------------------------------
+// True weight retraining can't happen in a browser, so ShrimGen's "learning"
+// is an honest, lightweight stand-in: liked exchanges are kept as style
+// examples and folded into the system prompt for future replies, so the
+// model leans toward what's worked before. Disliked questions are tracked
+// so ShrimGen knows to try a different angle next time.
+const LIKED_KEY = "shrimgen_liked_examples";
+const DISLIKED_KEY = "shrimgen_disliked_prompts";
+const MAX_EXAMPLES = 5;
+
+function readList(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  } catch {
+    return [];
+  }
+}
+function writeList(key, list) {
+  localStorage.setItem(key, JSON.stringify(list.slice(-MAX_EXAMPLES)));
+}
+
+export function recordFeedback(type, userText, assistantText) {
+  if (type === "like") {
+    const list = readList(LIKED_KEY);
+    list.push({
+      user: (userText || "").slice(0, 200),
+      assistant: (assistantText || "").slice(0, 300),
+    });
+    writeList(LIKED_KEY, list);
+  } else if (type === "dislike") {
+    const list = readList(DISLIKED_KEY);
+    list.push({ user: (userText || "").slice(0, 200) });
+    writeList(DISLIKED_KEY, list);
+  }
+}
+
+export function clearFeedbackMemory() {
+  localStorage.removeItem(LIKED_KEY);
+  localStorage.removeItem(DISLIKED_KEY);
+}
+
+/** Builds a short system-prompt addendum from past feedback, or "" if none yet. */
+export function getLearningContext() {
+  const liked = readList(LIKED_KEY);
+  const disliked = readList(DISLIKED_KEY);
+  if (!liked.length && !disliked.length) return "";
+
+  let out = "\n\nFeedback the user has given on past replies, to help you adapt:";
+  if (liked.length) {
+    out += "\nReplies the user liked — match this style, tone, and length when relevant:";
+    liked.forEach((ex, i) => {
+      out += `\n${i + 1}. Q: "${ex.user}" — A liked: "${ex.assistant}"`;
+    });
+  }
+  if (disliked.length) {
+    out += "\nThe user disliked past replies to questions like these — try a noticeably different approach:";
+    disliked.forEach((ex, i) => {
+      out += `\n${i + 1}. "${ex.user}"`;
+    });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Engine class
 // ---------------------------------------------------------------------------
@@ -150,10 +265,29 @@ class AIEngine {
   constructor() {
     this.engine = null;
     this.activeKey = null;
+    this.activeModelId = null;
+    this.usedFallback = false;
   }
 
   supportsWebGPU() {
     return typeof navigator !== "undefined" && !!navigator.gpu;
+  }
+
+  /**
+   * Some quantizations (q4f16_1) require the optional WebGPU "shader-f16"
+   * extension. Older GPUs/drivers (especially on some Windows/Intel setups)
+   * don't expose it, which is exactly what throws the
+   * "extension 'f16' is not allowed" / GPUPipelineError seen in the wild.
+   * We check for it up front and prefer the f32 build when it's missing.
+   */
+  async hasShaderF16() {
+    if (!this.supportsWebGPU()) return false;
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      return !!adapter && adapter.features.has("shader-f16");
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -178,10 +312,37 @@ class AIEngine {
       this.engine = null;
     }
 
-    this.engine = await webllm.CreateMLCEngine(model.id, {
-      initProgressCallback,
-    });
+    let idToUse = model.id;
+    let usedFallback = false;
+
+    // Pick the compatible variant up front when we can, to avoid a wasted
+    // download of a build that's guaranteed to fail to compile.
+    if (model.fallbackId) {
+      const f16ok = await this.hasShaderF16();
+      if (!f16ok) {
+        idToUse = model.fallbackId;
+        usedFallback = true;
+      }
+    }
+
+    try {
+      this.engine = await webllm.CreateMLCEngine(idToUse, { initProgressCallback });
+    } catch (err) {
+      const msg = String(err?.message || err);
+      const looksLikeF16Issue = /shader-f16|f16|ShaderModule|GPUPipelineError/i.test(msg);
+      if (!usedFallback && model.fallbackId && looksLikeF16Issue) {
+        // Retry once with the more broadly compatible quantization.
+        idToUse = model.fallbackId;
+        usedFallback = true;
+        this.engine = await webllm.CreateMLCEngine(idToUse, { initProgressCallback });
+      } else {
+        throw err;
+      }
+    }
+
     this.activeKey = modelKey;
+    this.activeModelId = idToUse;
+    this.usedFallback = usedFallback;
     markModelInstalled(modelKey);
     return this.engine;
   }

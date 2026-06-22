@@ -1,5 +1,23 @@
 // app.js — ShrimGen UI logic
-import { aiEngine, MODELS, DEFAULT_MODEL_KEY, isModelInstalled } from "./ai-engine.js";
+import {
+  aiEngine,
+  MODELS,
+  DEFAULT_MODEL_KEY,
+  isModelInstalled,
+  uninstallModel,
+  recordFeedback,
+  getLearningContext,
+} from "./ai-engine.js";
+
+// ---------------------------------------------------------------------------
+// Vector feedback icons (single color via currentColor — no emoji)
+// ---------------------------------------------------------------------------
+const ICON_THUMB_UP =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.5-8a2 2 0 0 1 2 .3 2 2 0 0 1 .7 1.9L13.4 9H18a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 16.5 20H7"/></svg>';
+const ICON_THUMB_DOWN =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-3zm0 0-4.5 8a2 2 0 0 1-2-.3 2 2 0 0 1-.7-1.9l.8-5.8H6a2 2 0 0 1-2-2.4l1.5-7A2 2 0 0 1 7.5 3H17"/></svg>';
+const ICON_TRASH =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7m2 0-.8 12.2c-.1.9-.8 1.6-1.7 1.6H8.6c-.9 0-1.6-.7-1.7-1.6L6 7"/></svg>';
 
 // ---------------------------------------------------------------------------
 // Tiny markdown renderer (bold, italics, code, lists, headers, links, quotes)
@@ -230,6 +248,40 @@ function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function attachFeedback(row, msg) {
+  const wrap = document.createElement("div");
+  wrap.className = "fb-row";
+  wrap.innerHTML = `
+    <button class="fb-btn" data-type="like" aria-label="Good response" title="Good response">${ICON_THUMB_UP}</button>
+    <button class="fb-btn" data-type="dislike" aria-label="Bad response" title="Bad response">${ICON_THUMB_DOWN}</button>
+  `;
+  const likeBtn = wrap.querySelector('[data-type="like"]');
+  const dislikeBtn = wrap.querySelector('[data-type="dislike"]');
+
+  function refresh() {
+    likeBtn.classList.toggle("active", msg.feedback === "like");
+    dislikeBtn.classList.toggle("active", msg.feedback === "dislike");
+  }
+  refresh();
+
+  function setFeedback(type) {
+    const newVal = msg.feedback === type ? null : type;
+    msg.feedback = newVal;
+    if (newVal) {
+      const chat = getCurrentChat();
+      const idx = chat ? chat.messages.indexOf(msg) : -1;
+      const userMsg = idx > 0 ? chat.messages[idx - 1] : null;
+      recordFeedback(newVal, userMsg?.content || "", msg.content);
+    }
+    saveChats(chats);
+    refresh();
+  }
+
+  likeBtn.addEventListener("click", () => setFeedback("like"));
+  dislikeBtn.addEventListener("click", () => setFeedback("dislike"));
+  row.appendChild(wrap);
+}
+
 function buildMessageRow(msg) {
   const row = document.createElement("div");
   row.className = "msg-row " + (msg.role === "user" ? "user" : "assistant");
@@ -251,6 +303,10 @@ function buildMessageRow(msg) {
   time.className = "msg-time";
   time.textContent = formatTime(msg.ts || Date.now());
   row.appendChild(time);
+
+  if (msg.role === "assistant" && msg.content) {
+    attachFeedback(row, msg);
+  }
 
   return { row, bubble };
 }
@@ -281,8 +337,8 @@ function openModelModal(forced = false) {
   modalIsForced = forced;
   modalClose.style.display = forced ? "none" : "";
   modelModalSub.textContent = forced
-    ? "Install an AI to get started. Pick whichever Shrim fits your device — you can add more, or switch, anytime."
-    : "Pick a model to install or switch to. Switching keeps your current conversation — the new Shrim picks up the full chat history.";
+    ? "Install an AI to get started. Pick whichever Shrim fits your device — you can add more, switch, or uninstall anytime."
+    : "Pick a model to install or switch to. Switching keeps your current conversation — the new Shrim picks up the full chat history. Installed models you're not using can be uninstalled to free up space.";
   renderModelGrid();
   modelModal.classList.remove("hidden");
 }
@@ -324,9 +380,12 @@ function renderModelGrid() {
           <div class="spec-row"><span>CPU</span><span>${escapeHtml(model.specs.cpu)}</span></div>
         </div>
         <div class="device-tags">${devTags}</div>
-        <button class="model-action ${isCurrent ? "current" : installed ? "installed" : ""}">
-          ${isCurrent ? "Currently active" : installed ? "Switch to this Shrim" : "Install"}
-        </button>
+        <div class="model-action-row">
+          <button class="model-action ${isCurrent ? "current" : installed ? "installed" : ""}">
+            ${isCurrent ? "Currently active" : installed ? "Switch to this Shrim" : "Install"}
+          </button>
+          ${installed && !isCurrent ? `<button class="model-uninstall" title="Uninstall ${escapeHtml(model.name)}" aria-label="Uninstall ${escapeHtml(model.name)}">${ICON_TRASH}</button>` : ""}
+        </div>
       </div>
     `;
 
@@ -335,6 +394,19 @@ function renderModelGrid() {
       btn.addEventListener("click", () => chooseModel(model.key));
     } else {
       btn.disabled = true;
+    }
+
+    const uninstallBtn = card.querySelector(".model-uninstall");
+    if (uninstallBtn) {
+      uninstallBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Uninstall ${model.name}? You'll need to download it again to use it later.`)) return;
+        await uninstallModel(model.key);
+        if (localStorage.getItem(ACTIVE_MODEL_KEY) === model.key) {
+          localStorage.removeItem(ACTIVE_MODEL_KEY);
+        }
+        renderModelGrid();
+      });
     }
 
     modelGrid.appendChild(card);
@@ -356,8 +428,12 @@ function updateProgress(report) {
   progressBar.style.width = pct + "%";
   progressText.textContent = report.text || pct + "% complete";
 }
-function hideProgress() {
-  progressOverlay.classList.add("hidden");
+function hideProgress(delay = 0) {
+  if (delay) {
+    setTimeout(() => progressOverlay.classList.add("hidden"), delay);
+  } else {
+    progressOverlay.classList.add("hidden");
+  }
 }
 
 function updateModelPill() {
@@ -377,7 +453,13 @@ async function chooseModel(modelKey) {
   try {
     await aiEngine.load(modelKey, updateProgress);
     localStorage.setItem(ACTIVE_MODEL_KEY, modelKey);
-    hideProgress();
+    if (aiEngine.usedFallback) {
+      progressBar.style.width = "100%";
+      progressText.textContent = "Loaded in compatibility mode for your GPU.";
+      hideProgress(1100);
+    } else {
+      hideProgress();
+    }
     modalIsForced = false;
     closeModelModal();
     updateModelPill();
@@ -446,7 +528,7 @@ composer.addEventListener("submit", async (e) => {
   sendBtn.disabled = true;
 
   const history = [
-    SYSTEM_PROMPT,
+    { role: "system", content: SYSTEM_PROMPT.content + getLearningContext() },
     ...chat.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
@@ -459,6 +541,7 @@ composer.addEventListener("submit", async (e) => {
     aBubble.classList.remove("typing");
     assistantMsg.content = full || "…";
     aBubble.innerHTML = renderMarkdown(assistantMsg.content);
+    attachFeedback(aRow, assistantMsg);
     chat.messages.push(assistantMsg);
     chat.updatedAt = Date.now();
     saveChats(chats);
@@ -498,10 +581,17 @@ async function boot() {
   try {
     await aiEngine.load(startKey, updateProgress);
     localStorage.setItem(ACTIVE_MODEL_KEY, startKey);
+    if (aiEngine.usedFallback) {
+      progressBar.style.width = "100%";
+      progressText.textContent = "Loaded in compatibility mode for your GPU.";
+      hideProgress(1100);
+    } else {
+      hideProgress();
+    }
   } catch (err) {
     console.error(err);
-  } finally {
     hideProgress();
+  } finally {
     updateModelPill();
   }
 }

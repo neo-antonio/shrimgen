@@ -15,9 +15,9 @@
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-sm: 9px;
-  --font-display: "Fraunces", serif;
-  --font-body: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-display: "Ubuntu", sans-serif;
+  --font-body: "Ubuntu", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Ubuntu Mono", ui-monospace, Menlo, monospace;
   --header-h: 60px;
 }
 
@@ -365,6 +365,28 @@ textarea { font-family: inherit; }
   margin-top: 4px;
 }
 
+/* Like / dislike feedback (vector icons, single color, no emoji) */
+.fb-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.fb-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--shell);
+  color: var(--slate);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.fb-btn:hover { border-color: var(--coral); color: var(--coral-dark); }
+.fb-btn.active { background: var(--coral); border-color: var(--coral); color: #fff; }
+.fb-btn[data-type="dislike"].active { background: var(--ink); border-color: var(--ink); }
+
 /* Composer */
 #composer {
   display: flex;
@@ -560,6 +582,7 @@ textarea { font-family: inherit; }
   cursor: pointer;
   background: var(--coral);
   color: #fff;
+  flex: 1 1 auto;
 }
 .model-action:hover { background: var(--coral-dark); }
 .model-action.installed {
@@ -572,6 +595,25 @@ textarea { font-family: inherit; }
   color: #fff;
   cursor: default;
 }
+
+.model-action-row {
+  margin-top: auto;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.model-uninstall {
+  flex: 0 0 auto;
+  width: 38px;
+  border: 1px solid var(--border);
+  background: var(--shell);
+  border-radius: 999px;
+  color: var(--slate);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.model-uninstall:hover { border-color: var(--coral-dark); color: var(--coral-dark); }
 
 /* =====================================================================
    Progress overlay
