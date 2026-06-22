@@ -1,10 +1,12 @@
 // sw.js — ShrimGen service worker
-// Only caches the small app shell (HTML/CSS/JS/icons) so the UI loads offline.
-// Model weights are fetched from Hugging Face by the WebLLM library itself and
-// cached via the browser's own Cache/IndexedDB storage — we deliberately leave
-// those cross-origin requests alone here.
+// Caches the small app shell (HTML/CSS/JS/icons) as an OFFLINE FALLBACK only.
+// The primary strategy is network-first, so a fresh deploy is picked up on
+// the very next load instead of serving a stale cached copy. Model weights
+// are fetched from Hugging Face by the WebLLM library itself and cached via
+// the browser's own Cache/IndexedDB storage — we deliberately leave those
+// cross-origin requests alone here.
 
-const CACHE_NAME = "shrimgen-shell-v1";
+const CACHE_NAME = "shrimgen-shell-v0.3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -21,20 +23,29 @@ const APP_SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch((err) => {
-      console.warn("ShrimGen SW: app shell cache failed", err);
-    })
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .catch((err) => console.warn("ShrimGen SW: app shell cache failed", err))
   );
+  // Activate this new worker as soon as it finishes installing, instead of
+  // waiting for all tabs to close — this is what makes updates show up fast.
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
+  // Take control of any already-open tabs immediately.
   self.clients.claim();
+});
+
+// Lets the page force this worker to activate right away (see app.js).
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -48,18 +59,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first: always try to get the latest file. Only fall back to the
+  // cached copy if the network is unavailable (offline), so deployed updates
+  // are reflected on the very next load rather than staying stale.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });

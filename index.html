@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>ShrimGen — on-device AI chat</title>
+<title>ShrimGen</title>
 <meta name="description" content="ShrimGen runs small and large language models entirely on your device using WebGPU. No servers, no accounts, fully offline after install." />
 <meta name="theme-color" content="#ff6f61" />
 
@@ -50,6 +50,12 @@
       </button>
       <div class="sidebar-label">Archives</div>
       <div id="archive-list"></div>
+
+      <div id="sidebar-footer">
+        <p>Visit <a href="https://neushimo.com/shrimgen" target="_blank" rel="noopener"><strong>neushimo.com</strong></a> for updates</p>
+        <p>©2026 Neo Antonio<br />All rights reserved</p>
+        <p class="version">ShrimGen v0.3</p>
+      </div>
     </aside>
 
     <main id="chat-main">
@@ -59,25 +65,21 @@
       <div id="empty-state" class="empty-state hidden">
         <img src="icons/favicon.png" alt="" width="48" height="48" />
         <h2>What's cooking?</h2>
-        <p>Ask ShrimGen anything. Everything runs locally on your device — nothing leaves your browser.</p>
+        <p>Ask ShrimGen anything. Everything runs locally on your device, your conversation and information is not sent to any server.</p>
       </div>
 
       <form id="composer" autocomplete="off">
         <textarea id="input" placeholder="Message ShrimGen…" rows="1" maxlength="6000"></textarea>
+        <button id="stop-btn" type="button" class="hidden" aria-label="Stop generating">
+          <svg viewBox="0 0 24 24" width="14" height="14"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>
+        </button>
         <button id="send-btn" type="submit" aria-label="Send message">
           <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 11.5 21 3l-8.5 18-2.5-7.5L3 11.5z" fill="currentColor"/></svg>
         </button>
       </form>
-      <div class="composer-hint">ShrimGen can make mistakes. Responses are generated locally on your device.</div>
+      <div class="composer-hint">ShrimGen is AI and can make mistakes.</div>
     </main>
   </div>
-
-  <!-- ===================== Footer ===================== -->
-  <footer id="app-footer">
-    <p>Visit <a href="https://neushimo.com/shrimgen" target="_blank" rel="noopener"><strong>neushimo.com</strong></a> for updates</p>
-    <p>©2026 Neo Antonio<br />All rights reserved</p>
-    <p class="version">ShrimGen v1.0</p>
-  </footer>
 </div>
 
 <!-- ===================== Model picker / install modal ===================== -->

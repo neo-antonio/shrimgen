@@ -10,7 +10,7 @@ import {
 } from "./ai-engine.js";
 
 // ---------------------------------------------------------------------------
-// Vector feedback icons (single color via currentColor — no emoji)
+// Vector icons (single color via currentColor — no emoji anywhere)
 // ---------------------------------------------------------------------------
 const ICON_THUMB_UP =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zm0 0 4.5-8a2 2 0 0 1 2 .3 2 2 0 0 1 .7 1.9L13.4 9H18a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 16.5 20H7"/></svg>';
@@ -18,10 +18,24 @@ const ICON_THUMB_DOWN =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-3zm0 0-4.5 8a2 2 0 0 1-2-.3 2 2 0 0 1-.7-1.9l.8-5.8H6a2 2 0 0 1-2-2.4l1.5-7A2 2 0 0 1 7.5 3H17"/></svg>';
 const ICON_TRASH =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7m2 0-.8 12.2c-.1.9-.8 1.6-1.7 1.6H8.6c-.9 0-1.6-.7-1.7-1.6L6 7"/></svg>';
+const ICON_COPY =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const ICON_CHECK =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+const ICON_PENCIL =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5a2 2 0 0 1 2.83 2.83L7 18.66 3 19.5l.84-4L16.5 3.5z"/></svg>';
+const ICON_CHEV_LEFT =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+const ICON_CHEV_RIGHT =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+const ICON_PIN =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5h6l-.6 5.5L17 13v2H7v-2l2.6-3L9 4.5z"/><path d="M12 15v5"/></svg>';
 
 // ---------------------------------------------------------------------------
 // Tiny markdown renderer (bold, italics, code, lists, headers, links, quotes)
 // ---------------------------------------------------------------------------
+const CURSOR_MARKER = "\u0000CURSOR\u0000";
+
 function escapeHtml(str) {
   return str
     .replace(/&/g, "&amp;")
@@ -29,10 +43,12 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;");
 }
 
-function renderMarkdown(src) {
-  if (!src) return "";
+function renderMarkdown(src, withCursor = false) {
+  if (!src && !withCursor) return "";
   const codeBlocks = [];
-  let text = src.replace(/```([a-zA-Z0-9]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+  let text = (src || "") + (withCursor ? CURSOR_MARKER : "");
+
+  text = text.replace(/```([a-zA-Z0-9]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const idx = codeBlocks.length;
     codeBlocks.push(`<pre><code>${escapeHtml(code.trim())}</code></pre>`);
     return `\u0000CODEBLOCK${idx}\u0000`;
@@ -112,6 +128,7 @@ function renderMarkdown(src) {
 
   text = text.replace(/\u0000ICODE(\d+)\u0000/g, (_, i) => inlineCode[+i]);
   text = text.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_, i) => codeBlocks[+i]);
+  text = text.replace(CURSOR_MARKER, '<span class="caret"></span>');
 
   return text;
 }
@@ -150,13 +167,16 @@ function getChat(id) {
 function getCurrentChat() {
   return getChat(currentChatId);
 }
+function getMostRecentChatId() {
+  if (!chats.length) return null;
+  return chats.reduce((latest, c) => (c.createdAt > latest.createdAt ? c : latest), chats[0]).id;
+}
 
 // ---------------------------------------------------------------------------
 // DOM refs
 // ---------------------------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
 const layout = $("#layout");
-const sidebar = $("#sidebar");
 const sidebarOverlay = $("#sidebar-overlay");
 const hamburger = $("#hamburger");
 const newChatBtn = $("#new-chat-btn");
@@ -166,6 +186,7 @@ const emptyState = $("#empty-state");
 const composer = $("#composer");
 const input = $("#input");
 const sendBtn = $("#send-btn");
+const stopBtn = $("#stop-btn");
 const modelPillBtn = $("#model-switcher-btn");
 const modelPillLabel = $("#model-pill-label");
 const modelModal = $("#model-modal");
@@ -176,6 +197,7 @@ const progressOverlay = $("#progress-overlay");
 const progressModelName = $("#progress-model-name");
 const progressBar = $("#progress-bar");
 const progressText = $("#progress-text");
+const progressSubstatus = $("#progress-substatus");
 const noWebgpu = $("#no-webgpu");
 
 let modalIsForced = false;
@@ -198,7 +220,7 @@ function closeMobileSidebar() {
 }
 
 // ---------------------------------------------------------------------------
-// Archives
+// Archives (with pin + delete)
 // ---------------------------------------------------------------------------
 function renderArchiveList() {
   archiveList.innerHTML = "";
@@ -206,19 +228,39 @@ function renderArchiveList() {
     archiveList.innerHTML = `<div class="archive-empty">No chats yet. Start one below.</div>`;
     return;
   }
-  const sorted = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
+  const sorted = [...chats].sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return b.updatedAt - a.updatedAt;
+  });
+
   for (const chat of sorted) {
     const item = document.createElement("div");
     item.className = "archive-item" + (chat.id === currentChatId ? " active" : "");
-    item.innerHTML = `<span class="archive-title">${escapeHtml(chat.title || "New chat")}</span><button class="archive-del" title="Delete chat" aria-label="Delete chat">✕</button>`;
+    item.innerHTML = `
+      <span class="archive-title">
+        ${chat.pinned ? `<svg class="pin-mark" viewBox="0 0 24 24" fill="currentColor"><path d="M9 4.5h6l-.6 5.5L17 13v2H7v-2l2.6-3L9 4.5z"/><path d="M12 15v5" stroke="currentColor" stroke-width="2"/></svg>` : ""}
+        <span class="archive-title-text">${escapeHtml(chat.title || "New chat")}</span>
+      </span>
+      <span class="archive-actions">
+        <button class="archive-pin ${chat.pinned ? "pinned" : ""}" title="${chat.pinned ? "Unpin" : "Pin"} chat" aria-label="${chat.pinned ? "Unpin" : "Pin"} chat">${ICON_PIN}</button>
+        <button class="archive-del" title="Delete chat" aria-label="Delete chat">${ICON_TRASH}</button>
+      </span>
+    `;
     item.querySelector(".archive-title").addEventListener("click", () => {
       currentChatId = chat.id;
       renderChat();
       renderArchiveList();
       closeMobileSidebar();
     });
+    item.querySelector(".archive-pin").addEventListener("click", (e) => {
+      e.stopPropagation();
+      chat.pinned = !chat.pinned;
+      saveChats(chats);
+      renderArchiveList();
+    });
     item.querySelector(".archive-del").addEventListener("click", (e) => {
       e.stopPropagation();
+      if (!confirm(`Delete "${chat.title || "this chat"}"? This can't be undone.`)) return;
       chats = chats.filter((c) => c.id !== chat.id);
       saveChats(chats);
       if (currentChatId === chat.id) currentChatId = chats[0]?.id || null;
@@ -230,7 +272,7 @@ function renderArchiveList() {
 }
 
 function createNewChat() {
-  const chat = { id: uid(), title: "", messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+  const chat = { id: uid(), title: "", messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() };
   chats.unshift(chat);
   currentChatId = chat.id;
   saveChats(chats);
@@ -252,9 +294,11 @@ function attachFeedback(row, msg) {
   const wrap = document.createElement("div");
   wrap.className = "fb-row";
   wrap.innerHTML = `
+    <button class="fb-btn copy-btn" data-type="copy" aria-label="Copy response" title="Copy response">${ICON_COPY}</button>
     <button class="fb-btn" data-type="like" aria-label="Good response" title="Good response">${ICON_THUMB_UP}</button>
     <button class="fb-btn" data-type="dislike" aria-label="Bad response" title="Bad response">${ICON_THUMB_DOWN}</button>
   `;
+  const copyBtn = wrap.querySelector('[data-type="copy"]');
   const likeBtn = wrap.querySelector('[data-type="like"]');
   const dislikeBtn = wrap.querySelector('[data-type="dislike"]');
 
@@ -263,6 +307,21 @@ function attachFeedback(row, msg) {
     dislikeBtn.classList.toggle("active", msg.feedback === "dislike");
   }
   refresh();
+
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(msg.content || "");
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — fail silently.
+    }
+    const original = copyBtn.innerHTML;
+    copyBtn.innerHTML = ICON_CHECK;
+    copyBtn.disabled = true;
+    setTimeout(() => {
+      copyBtn.innerHTML = original;
+      copyBtn.disabled = false;
+    }, 1200);
+  });
 
   function setFeedback(type) {
     const newVal = msg.feedback === type ? null : type;
@@ -282,7 +341,142 @@ function attachFeedback(row, msg) {
   row.appendChild(wrap);
 }
 
-function buildMessageRow(msg) {
+/** Attaches an edit pencil + branch nav arrows to the most recent user message of the most recent chat. */
+function attachEditControls(row, msg, chat) {
+  const isMostRecentChat = chat.id === getMostRecentChatId();
+  const lastUserIdx = (() => {
+    for (let i = chat.messages.length - 1; i >= 0; i--) {
+      if (chat.messages[i].role === "user") return i;
+    }
+    return -1;
+  })();
+  const idx = chat.messages.indexOf(msg);
+  const isEditable = isMostRecentChat && idx === lastUserIdx && !isGenerating;
+  if (idx === -1) return;
+
+  const metaRow = document.createElement("div");
+  metaRow.className = "msg-meta-row";
+
+  if (msg.branches && msg.branches.length > 1) {
+    const nav = document.createElement("div");
+    nav.className = "branch-nav";
+    nav.innerHTML = `
+      <button class="branch-prev" aria-label="Previous version">${ICON_CHEV_LEFT}</button>
+      <span class="branch-count">${msg.activeBranch + 1}/${msg.branches.length}</span>
+      <button class="branch-next" aria-label="Next version">${ICON_CHEV_RIGHT}</button>
+    `;
+    const prevBtn = nav.querySelector(".branch-prev");
+    const nextBtn = nav.querySelector(".branch-next");
+    prevBtn.disabled = msg.activeBranch === 0;
+    nextBtn.disabled = msg.activeBranch === msg.branches.length - 1;
+    prevBtn.addEventListener("click", () => switchBranch(chat, msg, msg.activeBranch - 1));
+    nextBtn.addEventListener("click", () => switchBranch(chat, msg, msg.activeBranch + 1));
+    metaRow.appendChild(nav);
+  }
+
+  if (isEditable) {
+    const editBtn = document.createElement("button");
+    editBtn.className = "edit-btn";
+    editBtn.innerHTML = ICON_PENCIL;
+    editBtn.title = "Edit message";
+    editBtn.setAttribute("aria-label", "Edit message");
+    editBtn.addEventListener("click", () => enterEditMode(row, msg, chat));
+    metaRow.appendChild(editBtn);
+  }
+
+  if (metaRow.children.length) row.appendChild(metaRow);
+}
+
+function switchBranch(chat, msg, newIndex) {
+  if (!msg.branches || newIndex < 0 || newIndex >= msg.branches.length) return;
+  const branch = msg.branches[newIndex];
+  msg.activeBranch = newIndex;
+  msg.content = branch.content;
+  const idx = chat.messages.indexOf(msg);
+  const nextMsg = chat.messages[idx + 1];
+  if (nextMsg && nextMsg.role === "assistant") {
+    nextMsg.content = branch.assistantContent || "";
+    nextMsg.modelKey = branch.assistantModelKey || nextMsg.modelKey;
+  }
+  saveChats(chats);
+  renderChat();
+}
+
+function enterEditMode(row, msg, chat) {
+  const bubble = row.querySelector(".bubble");
+  if (!bubble) return;
+  const originalHTML = row.innerHTML;
+
+  row.innerHTML = "";
+  const box = document.createElement("div");
+  box.className = "edit-box";
+  box.innerHTML = `
+    <textarea class="edit-textarea"></textarea>
+    <div class="edit-box-actions">
+      <button class="edit-cancel" type="button">Cancel</button>
+      <button class="edit-save" type="button">Save & submit</button>
+    </div>
+  `;
+  const textarea = box.querySelector(".edit-textarea");
+  textarea.value = msg.content;
+  row.appendChild(box);
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+  box.querySelector(".edit-cancel").addEventListener("click", () => {
+    row.innerHTML = originalHTML;
+    // Re-bind: easiest reliable path is a full re-render.
+    renderChat();
+  });
+
+  box.querySelector(".edit-save").addEventListener("click", () => {
+    const newText = textarea.value.trim();
+    if (!newText) return;
+    editUserMessage(chat, msg, newText);
+  });
+}
+
+async function editUserMessage(chat, msg, newText) {
+  const idx = chat.messages.indexOf(msg);
+  if (idx === -1) return;
+  const nextMsg = chat.messages[idx + 1];
+  const oldAssistant = nextMsg && nextMsg.role === "assistant" ? nextMsg : null;
+
+  if (!msg.branches) {
+    msg.branches = [
+      {
+        content: msg.content,
+        assistantContent: oldAssistant ? oldAssistant.content : "",
+        assistantModelKey: oldAssistant ? oldAssistant.modelKey : null,
+      },
+    ];
+    msg.activeBranch = 0;
+  }
+
+  // Drop the old reply (and anything after) — we're regenerating from here.
+  chat.messages = chat.messages.slice(0, idx + 1);
+  msg.content = newText;
+  if (idx === 0) {
+    chat.title = newText.slice(0, 48) + (newText.length > 48 ? "…" : "");
+  }
+  chat.updatedAt = Date.now();
+  saveChats(chats);
+  renderChat();
+  renderArchiveList();
+
+  const assistantMsg = await generateAssistantReply(chat);
+
+  msg.branches.push({
+    content: newText,
+    assistantContent: assistantMsg ? assistantMsg.content : "",
+    assistantModelKey: assistantMsg ? assistantMsg.modelKey : null,
+  });
+  msg.activeBranch = msg.branches.length - 1;
+  saveChats(chats);
+  renderChat();
+}
+
+function buildMessageRow(msg, chat) {
   const row = document.createElement("div");
   row.className = "msg-row " + (msg.role === "user" ? "user" : "assistant");
 
@@ -290,7 +484,7 @@ function buildMessageRow(msg) {
     const tag = document.createElement("div");
     tag.className = "msg-model-tag";
     const model = MODELS[msg.modelKey];
-    tag.textContent = "🦐 " + (model ? model.name : "ShrimGen");
+    tag.textContent = model ? model.name : "ShrimGen";
     row.appendChild(tag);
   }
 
@@ -307,6 +501,9 @@ function buildMessageRow(msg) {
   if (msg.role === "assistant" && msg.content) {
     attachFeedback(row, msg);
   }
+  if (msg.role === "user" && chat) {
+    attachEditControls(row, msg, chat);
+  }
 
   return { row, bubble };
 }
@@ -320,7 +517,7 @@ function renderChat() {
   }
   emptyState.classList.add("hidden");
   for (const msg of chat.messages) {
-    const { row } = buildMessageRow(msg);
+    const { row } = buildMessageRow(msg, chat);
     messagesEl.appendChild(row);
   }
   scrollToBottom();
@@ -365,15 +562,15 @@ function renderModelGrid() {
 
     card.innerHTML = `
       <div class="ticket-head">
-        <span class="shrim-name">🦐 ${escapeHtml(model.name)}</span>
+        <span class="shrim-name">${escapeHtml(model.name)}</span>
         <span class="shrim-desc">${escapeHtml(model.description)}</span>
-        <div class="ticket-notch"></div>
       </div>
       <div class="ticket-body">
         <p class="ticket-tagline">${escapeHtml(model.tagline)}</p>
         <div class="spec-rows">
           <div class="spec-row"><span>Params</span><span>${escapeHtml(model.params)}</span></div>
           <div class="spec-row"><span>Download</span><span>${escapeHtml(model.downloadSize)}</span></div>
+          <div class="spec-row"><span>Est. install time</span><span>${escapeHtml(model.estInstall || "Varies")}</span></div>
           <div class="spec-row"><span>VRAM</span><span>${escapeHtml(model.vram)}</span></div>
           <div class="spec-row"><span>RAM</span><span>${escapeHtml(model.specs.ram)}</span></div>
           <div class="spec-row"><span>GPU</span><span>${escapeHtml(model.specs.gpu)}</span></div>
@@ -416,7 +613,6 @@ function renderModelGrid() {
 // ---------------------------------------------------------------------------
 // Progress overlay
 // ---------------------------------------------------------------------------
-const progressSubstatus = $("#progress-substatus");
 let progressState = { startedAt: 0, lastPct: -1, lastChangeAt: 0, stallTimer: null };
 
 function clearStallTimer() {
@@ -483,7 +679,7 @@ function hideProgress(delay = 0) {
 
 function updateModelPill() {
   const model = MODELS[aiEngine.activeKey];
-  modelPillLabel.textContent = model ? "🦐 " + model.name : "Choose a model";
+  modelPillLabel.textContent = model ? model.name : "Choose a model";
   modelPillBtn.disabled = false;
 }
 
@@ -523,11 +719,18 @@ async function chooseModel(modelKey) {
 }
 
 // ---------------------------------------------------------------------------
-// Sending messages
+// Composer: auto-resize (no scrollbar until 10 lines), send / stop toggle
 // ---------------------------------------------------------------------------
+const LINE_HEIGHT = 22;
+const MAX_LINES = 10;
+
 function autoResizeInput() {
   input.style.height = "auto";
-  input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  const maxHeight = LINE_HEIGHT * MAX_LINES;
+  const desired = input.scrollHeight;
+  const capped = Math.min(desired, maxHeight);
+  input.style.height = capped + "px";
+  input.style.overflowY = desired > maxHeight ? "auto" : "hidden";
 }
 input.addEventListener("input", autoResizeInput);
 input.addEventListener("keydown", (e) => {
@@ -536,6 +739,59 @@ input.addEventListener("keydown", (e) => {
     composer.requestSubmit();
   }
 });
+
+function setGeneratingUI(generating) {
+  isGenerating = generating;
+  sendBtn.classList.toggle("hidden", generating);
+  stopBtn.classList.toggle("hidden", !generating);
+  sendBtn.disabled = generating;
+}
+
+stopBtn.addEventListener("click", async () => {
+  await aiEngine.interrupt();
+});
+
+/**
+ * Builds the full message history for `chat`, streams a reply from the
+ * currently active model, and appends it to the chat. Used both for normal
+ * sends and for regenerating after an edit. Returns the finished assistant
+ * message object (or null on hard failure).
+ */
+async function generateAssistantReply(chat) {
+  const assistantMsg = { role: "assistant", content: "", modelKey: aiEngine.activeKey, ts: Date.now() };
+  const { row: aRow, bubble: aBubble } = buildMessageRow(assistantMsg, null);
+  messagesEl.appendChild(aRow);
+  aBubble.innerHTML = renderMarkdown("", true);
+  scrollToBottom();
+
+  setGeneratingUI(true);
+
+  const history = [
+    { role: "system", content: SYSTEM_PROMPT.content + getLearningContext() },
+    ...chat.messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  try {
+    const full = await aiEngine.streamChat(history, (delta, fullText) => {
+      aBubble.innerHTML = renderMarkdown(fullText, true);
+      scrollToBottom();
+    });
+    assistantMsg.content = (full || "").trim() || "…";
+    aBubble.innerHTML = renderMarkdown(assistantMsg.content);
+    attachFeedback(aRow, assistantMsg);
+    chat.messages.push(assistantMsg);
+    chat.updatedAt = Date.now();
+    saveChats(chats);
+    return assistantMsg;
+  } catch (err) {
+    console.error(err);
+    aBubble.innerHTML = `<em>ShrimGen hit a snag generating a reply: ${escapeHtml(err?.message || "unknown error")}</em>`;
+    return null;
+  } finally {
+    setGeneratingUI(false);
+    renderArchiveList();
+  }
+}
 
 composer.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -548,7 +804,7 @@ composer.addEventListener("submit", async (e) => {
   }
 
   if (!currentChatId) {
-    const chat = { id: uid(), title: "", messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+    const chat = { id: uid(), title: "", messages: [], pinned: false, createdAt: Date.now(), updatedAt: Date.now() };
     chats.unshift(chat);
     currentChatId = chat.id;
   }
@@ -561,50 +817,15 @@ composer.addEventListener("submit", async (e) => {
   saveChats(chats);
 
   emptyState.classList.add("hidden");
-  const { row: userRow } = buildMessageRow(userMsg);
+  const { row: userRow } = buildMessageRow(userMsg, chat);
   messagesEl.appendChild(userRow);
   input.value = "";
   autoResizeInput();
   scrollToBottom();
   renderArchiveList();
 
-  // placeholder assistant bubble
-  const assistantMsg = { role: "assistant", content: "", modelKey: aiEngine.activeKey, ts: Date.now() };
-  const { row: aRow, bubble: aBubble } = buildMessageRow(assistantMsg);
-  aBubble.classList.add("typing");
-  messagesEl.appendChild(aRow);
-  scrollToBottom();
-
-  isGenerating = true;
-  sendBtn.disabled = true;
-
-  const history = [
-    { role: "system", content: SYSTEM_PROMPT.content + getLearningContext() },
-    ...chat.messages.map((m) => ({ role: m.role, content: m.content })),
-  ];
-
-  try {
-    const full = await aiEngine.streamChat(history, (delta, fullText) => {
-      aBubble.innerHTML = renderMarkdown(fullText);
-      aBubble.classList.add("typing");
-      scrollToBottom();
-    });
-    aBubble.classList.remove("typing");
-    assistantMsg.content = full || "…";
-    aBubble.innerHTML = renderMarkdown(assistantMsg.content);
-    attachFeedback(aRow, assistantMsg);
-    chat.messages.push(assistantMsg);
-    chat.updatedAt = Date.now();
-    saveChats(chats);
-  } catch (err) {
-    console.error(err);
-    aBubble.classList.remove("typing");
-    aBubble.innerHTML = `<em>ShrimGen hit a snag generating a reply: ${escapeHtml(err?.message || "unknown error")}</em>`;
-  } finally {
-    isGenerating = false;
-    sendBtn.disabled = false;
-    renderArchiveList();
-  }
+  await generateAssistantReply(chat);
+  renderChat(); // refresh so edit controls reflect the new "most recent" user message
 });
 
 // ---------------------------------------------------------------------------
@@ -649,9 +870,42 @@ async function boot() {
 
 boot();
 
-// Register the service worker for offline app-shell support.
+// ---------------------------------------------------------------------------
+// Service worker: register + actively check for updates so a new deploy
+// takes effect right away instead of waiting for a manual hard-refresh.
+// ---------------------------------------------------------------------------
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("SW registration failed:", e));
+  window.addEventListener("load", async () => {
+    try {
+      const registration = await navigator.serviceWorker.register("./sw.js");
+
+      // Check for a new version immediately, then periodically.
+      registration.update();
+      setInterval(() => registration.update(), 5 * 60 * 1000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") registration.update();
+      });
+
+      // If a new worker finishes installing, activate it right away.
+      registration.addEventListener("updatefound", () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && registration.waiting) {
+            registration.waiting.postMessage("SKIP_WAITING");
+          }
+        });
+      });
+
+      // Once the new worker takes control, reload once to pick up fresh files.
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      });
+    } catch (e) {
+      console.warn("SW registration failed:", e);
+    }
   });
 }
