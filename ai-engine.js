@@ -12,6 +12,21 @@ import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 // `id` is the WebLLM/MLC prebuilt model id actually fetched from Hugging Face
 // and run through WebGPU. Everything else is ShrimGen's own presentation.
 export const MODELS = {
+  shrimllama: {
+    key: "shrimllama",
+    name: "ShrimGen",
+    tagline: "The default Shrim. Sharper reasoning for everyday tasks.",
+    description: "Llama 3.2 · 3B parameters",
+    params: "3B",
+    id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+    fallbackId: "Llama-3.2-3B-Instruct-q4f32_1-MLC",
+    downloadSize: "~1.9 GB",
+    estInstall: "~45–90 sec on Wi-Fi",
+    vram: "~2.9 GB VRAM",
+    devices: ["Tablet (high-end)", "Laptop", "PC"],
+    specs: { ram: "8 GB+", gpu: "3 GB+ VRAM, dedicated or unified", cpu: "Modern multi-core CPU" },
+    isDefault: true,
+  },
   shrimgen: {
     key: "shrimgen",
     name: "ShrimPhyr",
@@ -67,21 +82,6 @@ export const MODELS = {
     vram: "~1.0 GB VRAM",
     devices: ["Phone", "Tablet", "Laptop", "PC"],
     specs: { ram: "3 GB+", gpu: "Any WebGPU GPU, 1.5 GB+ VRAM", cpu: "Any modern CPU" },
-  },
-  shrimllama: {
-    key: "shrimllama",
-    name: "ShrimGen",
-    tagline: "The default Shrim. Sharper reasoning for everyday tasks.",
-    description: "Llama 3.2 · 3B parameters",
-    params: "3B",
-    id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-    fallbackId: "Llama-3.2-3B-Instruct-q4f32_1-MLC",
-    downloadSize: "~1.9 GB",
-    estInstall: "~45–90 sec on Wi-Fi",
-    vram: "~2.9 GB VRAM",
-    devices: ["Tablet (high-end)", "Laptop", "PC"],
-    specs: { ram: "8 GB+", gpu: "3 GB+ VRAM, dedicated or unified", cpu: "Modern multi-core CPU" },
-    isDefault: true,
   },
   shrimphi: {
     key: "shrimphi",

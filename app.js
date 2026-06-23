@@ -30,6 +30,8 @@ const ICON_CHEV_RIGHT =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
 const ICON_PIN =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5h6l-.6 5.5L17 13v2H7v-2l2.6-3L9 4.5z"/><path d="M12 15v5"/></svg>';
+const ICON_SEARCH =
+  '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
 
 // ---------------------------------------------------------------------------
 // Tiny markdown renderer (bold, italics, code, lists, headers, links, quotes)
@@ -134,6 +136,115 @@ function renderMarkdown(src, withCursor = false) {
 }
 
 // ---------------------------------------------------------------------------
+// Web search (optional, opt-in retrieval augmentation)
+// ---------------------------------------------------------------------------
+// ShrimGen has no backend, so there's nowhere to hide an API key. These two
+// sources work straight from a static page with no key and no proxy:
+//   - DuckDuckGo's Instant Answer API, called via JSONP (a <script> tag),
+//     which sidesteps CORS entirely instead of requiring it.
+//   - Wikipedia's API with origin=*, its own documented anonymous-CORS path.
+// This is lightweight retrieval, not a search engine or a live news feed:
+// a few short snippets get handed to the model as extra context.
+let _ddgJsonpCounter = 0;
+
+function ddgInstantAnswer(query, timeoutMs = 6000) {
+  return new Promise((resolve) => {
+    const cbName = `__shrimgen_ddg_${Date.now()}_${_ddgJsonpCounter++}`;
+    const script = document.createElement("script");
+    let settled = false;
+
+    const cleanup = () => {
+      try {
+        delete window[cbName];
+      } catch {
+        window[cbName] = undefined;
+      }
+      script.remove();
+    };
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    window[cbName] = (data) => finish(data);
+    script.onerror = () => finish(null);
+    script.src = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&callback=${cbName}`;
+    document.head.appendChild(script);
+  });
+}
+
+function stripHtml(html) {
+  return (html || "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'");
+}
+
+async function wikipediaSearch(query, limit = 3) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+      query
+    )}&srlimit=${limit}&format=json&origin=*`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items = data?.query?.search || [];
+    return items.map((it) => ({
+      title: it.title,
+      snippet: stripHtml(it.snippet),
+      url: `https://en.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/ /g, "_"))}`,
+      source: "Wikipedia",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function performWebSearch(query) {
+  const [ddg, wiki] = await Promise.all([ddgInstantAnswer(query), wikipediaSearch(query, 3)]);
+  const results = [];
+
+  if (ddg) {
+    if (ddg.AbstractText) {
+      results.push({
+        title: ddg.Heading || "DuckDuckGo summary",
+        snippet: ddg.AbstractText,
+        url: ddg.AbstractURL || "https://duckduckgo.com/?q=" + encodeURIComponent(query),
+        source: "DuckDuckGo",
+      });
+    }
+    if (Array.isArray(ddg.RelatedTopics)) {
+      for (const t of ddg.RelatedTopics) {
+        if (results.length >= 2) break;
+        if (t.Text && t.FirstURL) {
+          results.push({ title: t.Text.split(" - ")[0], snippet: t.Text, url: t.FirstURL, source: "DuckDuckGo" });
+        }
+      }
+    }
+  }
+
+  results.push(...wiki);
+  return results.slice(0, 4);
+}
+
+function buildSearchContext(query, results) {
+  if (!results.length) return "";
+  let out = `\n\nLive web search results for "${query}" (use only if relevant, mention that you searched the web, and cite sources by name; ignore anything irrelevant):\n`;
+  results.forEach((r, i) => {
+    out += `${i + 1}. ${r.title}: ${r.snippet.slice(0, 240)} (Source: ${r.source})\n`;
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Storage helpers
 // ---------------------------------------------------------------------------
 const CHATS_KEY = "shrimgen_chats";
@@ -187,6 +298,8 @@ const composer = $("#composer");
 const input = $("#input");
 const sendBtn = $("#send-btn");
 const stopBtn = $("#stop-btn");
+const searchToggleBtn = $("#search-toggle");
+const composerHintEl = $("#composer-hint");
 const modelPillBtn = $("#model-switcher-btn");
 const modelPillLabel = $("#model-pill-label");
 const modelModal = $("#model-modal");
@@ -484,7 +597,10 @@ function buildMessageRow(msg, chat) {
     const tag = document.createElement("div");
     tag.className = "msg-model-tag";
     const model = MODELS[msg.modelKey];
-    tag.textContent = model ? model.name : "ShrimGen";
+    const baseName = model ? model.name : "ShrimGen";
+    tag.innerHTML = msg.searched
+      ? `<span>${escapeHtml(baseName)}</span><span class="search-mark" title="Used web search">${ICON_SEARCH}</span>`
+      : escapeHtml(baseName);
     row.appendChild(tag);
   }
 
@@ -500,12 +616,31 @@ function buildMessageRow(msg, chat) {
 
   if (msg.role === "assistant" && msg.content) {
     attachFeedback(row, msg);
+    if (msg.searched) attachSearchInfo(row, msg);
   }
   if (msg.role === "user" && chat) {
     attachEditControls(row, msg, chat);
   }
 
   return { row, bubble };
+}
+
+function attachSearchInfo(row, msg) {
+  const bubbleEl = row.querySelector(".bubble");
+  if (!bubbleEl) return;
+  const list = document.createElement("div");
+  list.className = "sources-row";
+  if (msg.sources && msg.sources.length) {
+    list.innerHTML = msg.sources
+      .map(
+        (s) =>
+          `<a href="${s.url}" target="_blank" rel="noopener" class="source-chip">${escapeHtml(s.source)}: ${escapeHtml(s.title)}</a>`
+      )
+      .join("");
+  } else {
+    list.innerHTML = `<span class="source-chip muted">No web results found. Answered from ShrimGen's own knowledge.</span>`;
+  }
+  bubbleEl.insertAdjacentElement("afterend", list);
 }
 
 function renderChat() {
@@ -754,14 +889,59 @@ stopBtn.addEventListener("click", async () => {
   await aiEngine.interrupt();
 });
 
+// ---------------------------------------------------------------------------
+// Web search toggle (opt-in, off by default, disclosed up front)
+// ---------------------------------------------------------------------------
+const SEARCH_ENABLED_KEY = "shrimgen_search_enabled";
+const SEARCH_ACK_KEY = "shrimgen_search_privacy_ack";
+const DEFAULT_COMPOSER_HINT = "ShrimGen is AI and can make mistakes.";
+let searchEnabled = localStorage.getItem(SEARCH_ENABLED_KEY) === "1";
+
+function updateSearchToggleUI() {
+  searchToggleBtn.setAttribute("aria-pressed", String(searchEnabled));
+  searchToggleBtn.title = searchEnabled
+    ? "Web search is on for your next message"
+    : "Turn on web search for your next message";
+  composerHintEl.textContent = searchEnabled
+    ? "Web search is on. This message will be sent to Wikipedia/DuckDuckGo to fetch results."
+    : DEFAULT_COMPOSER_HINT;
+  composerHintEl.classList.toggle("search-active", searchEnabled);
+}
+updateSearchToggleUI();
+
+searchToggleBtn.addEventListener("click", () => {
+  if (!searchEnabled) {
+    const acknowledged = localStorage.getItem(SEARCH_ACK_KEY) === "1";
+    if (!acknowledged) {
+      const ok = confirm(
+        "Web search sends the text of your message to Wikipedia and DuckDuckGo to fetch live results. " +
+          "That is the only time anything leaves your device; every other part of ShrimGen stays fully local. " +
+          "Turn on web search?"
+      );
+      if (!ok) return;
+      localStorage.setItem(SEARCH_ACK_KEY, "1");
+    }
+  }
+  searchEnabled = !searchEnabled;
+  localStorage.setItem(SEARCH_ENABLED_KEY, searchEnabled ? "1" : "0");
+  updateSearchToggleUI();
+});
+
 /**
  * Builds the full message history for `chat`, streams a reply from the
  * currently active model, and appends it to the chat. Used both for normal
  * sends and for regenerating after an edit. Returns the finished assistant
  * message object (or null on hard failure).
  */
-async function generateAssistantReply(chat) {
-  const assistantMsg = { role: "assistant", content: "", modelKey: aiEngine.activeKey, ts: Date.now() };
+async function generateAssistantReply(chat, { searchQuery = null } = {}) {
+  const assistantMsg = {
+    role: "assistant",
+    content: "",
+    modelKey: aiEngine.activeKey,
+    ts: Date.now(),
+    searched: !!searchQuery,
+    sources: [],
+  };
   const { row: aRow, bubble: aBubble } = buildMessageRow(assistantMsg, null);
   messagesEl.appendChild(aRow);
   aBubble.innerHTML = '<span class="dot-loading"><span></span><span></span><span></span></span>';
@@ -769,8 +949,23 @@ async function generateAssistantReply(chat) {
 
   setGeneratingUI(true);
 
+  let searchContext = "";
+  if (searchQuery) {
+    aBubble.innerHTML = '<span class="search-status">Searching the web…</span>';
+    scrollToBottom();
+    try {
+      const results = await performWebSearch(searchQuery);
+      assistantMsg.sources = results;
+      searchContext = buildSearchContext(searchQuery, results);
+    } catch (e) {
+      console.warn("Web search failed:", e);
+    }
+    aBubble.innerHTML = '<span class="dot-loading"><span></span><span></span><span></span></span>';
+    scrollToBottom();
+  }
+
   const history = [
-    { role: "system", content: SYSTEM_PROMPT.content + getLearningContext() },
+    { role: "system", content: SYSTEM_PROMPT.content + getLearningContext() + searchContext },
     ...chat.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
@@ -782,6 +977,7 @@ async function generateAssistantReply(chat) {
     assistantMsg.content = (full || "").trim() || "...";
     aBubble.innerHTML = renderMarkdown(assistantMsg.content);
     attachFeedback(aRow, assistantMsg);
+    if (assistantMsg.searched) attachSearchInfo(aRow, assistantMsg);
     chat.messages.push(assistantMsg);
     chat.updatedAt = Date.now();
     saveChats(chats);
@@ -827,7 +1023,7 @@ composer.addEventListener("submit", async (e) => {
   scrollToBottom();
   renderArchiveList();
 
-  await generateAssistantReply(chat);
+  await generateAssistantReply(chat, { searchQuery: searchEnabled ? text : null });
   renderChat(); // refresh so edit controls reflect the new "most recent" user message
 });
 
