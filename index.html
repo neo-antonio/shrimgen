@@ -53,7 +53,7 @@
       <div id="sidebar-footer">
         <p>Visit <a href="https://neushimo.com/shrimgen" target="_blank" rel="noopener"><strong>neushimo.com</strong></a> for updates</p>
         <p>©2026 Neo Antonio<br />All rights reserved</p>
-        <p class="version">ShrimGen v0.5</p>
+        <p class="version">ShrimGen v0.6</p>
       </div>
     </aside>
 
@@ -64,7 +64,7 @@
       <div id="empty-state" class="empty-state hidden">
         <img src="icons/favicon.png" alt="" width="48" height="48" />
         <h2>What's cooking?</h2>
-        <p>Ask ShrimGen anything. Everything runs locally on your device, your conversation and information is not sent to any server.</p>
+        <p>Ask ShrimGen anything. It runs fully on your device, so nothing you type ever reaches a server.</p>
       </div>
 
       <form id="composer" autocomplete="off">
@@ -100,11 +100,15 @@
 <!-- ===================== Install / download progress ===================== -->
 <div id="progress-overlay" class="hidden" role="status" aria-live="polite">
   <div class="progress-card">
+    <button id="progress-close" class="progress-close-btn" aria-label="Close (download continues in the background)" title="Close (download continues in the background)">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
     <img src="icons/favicon.png" alt="" width="40" height="40" class="progress-logo" />
     <div id="progress-model-name">Installing…</div>
     <div class="progress-track"><div id="progress-bar"></div></div>
     <div id="progress-text">Preparing download…</div>
     <div id="progress-substatus" class="hidden"></div>
+    <button id="progress-cancel" class="progress-cancel-btn">Cancel</button>
   </div>
 </div>
 

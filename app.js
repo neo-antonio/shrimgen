@@ -311,10 +311,34 @@ const progressModelName = $("#progress-model-name");
 const progressBar = $("#progress-bar");
 const progressText = $("#progress-text");
 const progressSubstatus = $("#progress-substatus");
+const progressCloseBtn = $("#progress-close");
+const progressCancelBtn = $("#progress-cancel");
 const noWebgpu = $("#no-webgpu");
 
 let modalIsForced = false;
 let isGenerating = false;
+
+// ---------------------------------------------------------------------------
+// Reliable mobile viewport height
+// ---------------------------------------------------------------------------
+// CSS `100dvh` should already account for the browser's address bar / nav
+// bar, but some Android browser/WebView versions compute it unreliably.
+// window.visualViewport tracks the *actual* visible area and updates live
+// when the address bar shows/hides or the keyboard opens, so we mirror it
+// into a CSS variable as the primary source of truth. html/body also keep
+// overflow-y: auto as a last-resort safety net so content is never fully
+// stuck off-screen even if this calculation is ever off.
+function syncAppHeight() {
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  document.documentElement.style.setProperty("--app-height", h + "px");
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncAppHeight);
+  window.visualViewport.addEventListener("scroll", syncAppHeight);
+}
+window.addEventListener("resize", syncAppHeight);
+window.addEventListener("orientationchange", syncAppHeight);
+syncAppHeight();
 
 // ---------------------------------------------------------------------------
 // Sidebar (mobile drawer)
@@ -755,7 +779,7 @@ function clearStallTimer() {
   }
 }
 
-function showProgress(modelName) {
+function showProgress(modelName, { onCancel, onClose } = {}) {
   progressModelName.textContent = "Installing " + modelName + "…";
   progressBar.style.width = "0%";
   progressBar.classList.remove("stalled");
@@ -763,6 +787,13 @@ function showProgress(modelName) {
   progressSubstatus.classList.add("hidden");
   progressSubstatus.textContent = "";
   progressOverlay.classList.remove("hidden");
+
+  progressCancelBtn.onclick = () => {
+    if (onCancel) onCancel();
+  };
+  progressCloseBtn.onclick = () => {
+    if (onClose) onClose();
+  };
 
   const now = Date.now();
   progressState = { startedAt: now, lastPct: -1, lastChangeAt: now, stallTimer: null };
@@ -828,9 +859,41 @@ async function chooseModel(modelKey) {
     closeModelModal();
     return;
   }
-  showProgress(model.name);
+
+  const cancelToken = { cancelled: false };
+  showProgress(model.name, {
+    onClose: () => hideProgress(),
+    onCancel: () => {
+      cancelToken.cancelled = true;
+      hideProgress();
+      if (!aiEngine.activeKey) {
+        openModelModal(true);
+      } else {
+        closeModelModal();
+      }
+    },
+  });
+
   try {
-    await aiEngine.load(modelKey, updateProgress);
+    await aiEngine.load(modelKey, (report) => {
+      if (!cancelToken.cancelled) updateProgress(report);
+    });
+
+    if (cancelToken.cancelled) {
+      // The download/compile finished after the user already backed out.
+      // Free the memory and don't apply it as the active model.
+      try {
+        await aiEngine.engine?.unload();
+      } catch {
+        /* ignore */
+      }
+      aiEngine.engine = null;
+      aiEngine.activeKey = null;
+      aiEngine.activeModelId = null;
+      renderModelGrid();
+      return;
+    }
+
     localStorage.setItem(ACTIVE_MODEL_KEY, modelKey);
     if (aiEngine.usedFallback) {
       progressBar.style.width = "100%";
@@ -844,6 +907,7 @@ async function chooseModel(modelKey) {
     updateModelPill();
     renderModelGrid();
   } catch (err) {
+    if (cancelToken.cancelled) return;
     console.error(err);
     hideProgress();
     const msg = String(err?.message || err);
@@ -1049,9 +1113,32 @@ async function boot() {
   }
 
   const startKey = savedModelKey && isModelInstalled(savedModelKey) ? savedModelKey : DEFAULT_MODEL_KEY;
-  showProgress(MODELS[startKey].name);
+  const cancelToken = { cancelled: false };
+  showProgress(MODELS[startKey].name, {
+    onClose: () => hideProgress(),
+    onCancel: () => {
+      cancelToken.cancelled = true;
+      hideProgress();
+      openModelModal(true);
+    },
+  });
   try {
-    await aiEngine.load(startKey, updateProgress);
+    await aiEngine.load(startKey, (report) => {
+      if (!cancelToken.cancelled) updateProgress(report);
+    });
+
+    if (cancelToken.cancelled) {
+      try {
+        await aiEngine.engine?.unload();
+      } catch {
+        /* ignore */
+      }
+      aiEngine.engine = null;
+      aiEngine.activeKey = null;
+      aiEngine.activeModelId = null;
+      return;
+    }
+
     localStorage.setItem(ACTIVE_MODEL_KEY, startKey);
     if (aiEngine.usedFallback) {
       progressBar.style.width = "100%";
@@ -1061,8 +1148,10 @@ async function boot() {
       hideProgress();
     }
   } catch (err) {
-    console.error(err);
-    hideProgress();
+    if (!cancelToken.cancelled) {
+      console.error(err);
+      hideProgress();
+    }
   } finally {
     updateModelPill();
   }

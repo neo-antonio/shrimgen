@@ -6,7 +6,7 @@
 // the browser's own Cache/IndexedDB storage; we deliberately leave those
 // cross-origin requests alone here.
 
-const CACHE_NAME = "shrimgen-shell-v0.5";
+const CACHE_NAME = "shrimgen-shell-v0.6";
 const APP_SHELL = [
   "./",
   "./index.html",
